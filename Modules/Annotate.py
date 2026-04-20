@@ -4,16 +4,17 @@
 import pandas as pd
 import scanpy as sc
 from pathlib import Path 
+from config import settings, get_module
 
 
 def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_module_dir):
-    """Run annotation on CosMx data."""
+    """Run annotation."""
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
 
     # Import data
-    print("Loading CosMx data...")
+    print("Loading data...")
     adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
 
     # Set the directory where to save the ScanPy figures
@@ -124,11 +125,11 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
 
 if __name__ == "__main__":
 
-    prev_module_dir = Path('analysis/2_DimensionReduction')
-    module_name = "3_Annotate" # Name of the module - will be used in the output directory name
-    module_dir = Path(f'analysis/{module_name}')
-    cluster_name = "leiden"    # name of the cluster column in adata.obs
-    new_clusters = "cell_type" # name of the new cluster column in adata.obs
+    module_2_name, module_2_dir = get_module(2)
+    module_3_name, module_3_dir = get_module(3)
 
-    run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_module_dir)
+    cluster_name = settings['modules']['DimensionReduction']['cluster_name']        
+    new_clusters = settings['modules']['Annotate']['new_clusters']  
+
+    run_annotate(module_3_dir, module_3_name, cluster_name, new_clusters, module_2_dir)
  

@@ -3,10 +3,10 @@
 import scanpy as sc
 import squidpy as sq
 from pathlib import Path 
+from config import get_module
 
-
-def run_spatial_statistics(module_dir, module_name, prev_module_dir):
-    """Run spatial statistics on Xenium data."""
+def run_spatial_statistics(module_dir, prev_module_dir):
+    """Run spatial statistics."""
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
@@ -14,7 +14,7 @@ def run_spatial_statistics(module_dir, module_name, prev_module_dir):
     sc.settings.figdir = module_dir # set the figures dir to not be figures 
 
     # Import data
-    print("Loading Xenium data...")
+    print("Loading data...")
     adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
 
     # Calculate spatial statistics
@@ -100,10 +100,9 @@ def run_spatial_statistics(module_dir, module_name, prev_module_dir):
 
 
 if __name__ == "__main__":
-    prev_module_dir = Path('analysis/4_ViewImages')
-    module_name = "5_SpatialStat" 
-    module_dir = Path(f'analysis/{module_name}')
+    module_4_name, module_4_dir = get_module(4)
+    module_5_name, module_5_dir = get_module(5)
 
-    run_spatial_statistics(module_dir, module_name, prev_module_dir)
+    run_spatial_statistics(module_5_dir, module_4_dir)
 
     

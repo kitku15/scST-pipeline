@@ -3,11 +3,17 @@
 import scanpy as sc
 import squidpy as sq
 from pathlib import Path 
+from config import settings, get_module
 
 
-def run_view_images(prev_module_dir, module_dir, module_name, gene_list):
+def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
     """Run the image viewing module."""
-    
+
+    if data_type == "CosMx":
+        spatial_key = "global"
+    elif data_type == "Xenium":
+        spatial_key = "spatial" 
+
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
 
@@ -15,14 +21,14 @@ def run_view_images(prev_module_dir, module_dir, module_name, gene_list):
 
 
     # Import data
-    print("Loading Xenium data...")
+    print("Loading data...")
     adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
 
     # View plots
     print("Visualize clusters on tissue...")
     sq.pl.spatial_scatter(
         adata,
-        spatial_key="global",
+        spatial_key=spatial_key,
         shape=None,
         outline=False,
         color=["leiden", "total_counts"],
@@ -37,7 +43,7 @@ def run_view_images(prev_module_dir, module_dir, module_name, gene_list):
     print("Plotting genes of interest on tissue...")
     sq.pl.spatial_scatter(
         adata,
-        spatial_key="global",
+        spatial_key=spatial_key,
         color=gene_list,
         shape=None,
         size=2,
@@ -52,17 +58,10 @@ def run_view_images(prev_module_dir, module_dir, module_name, gene_list):
     print("Imaging module completed successfully.")
 
 
-# if __name__ == "__main__":
-    # prev_module_dir = Path('analysis/3_Annotate')
-    # module_name = "4_ViewImages" 
-    # module_dir = Path(f'analysis/{module_name}')
-    
-    # gene_list = [ # List of genes to visualize on tissue
-    #     "SQSTM1",
-    #     "CD74",
-    #     "IGHG1",
-    #     "COL3A1",
-    #     "COL4A2",
-    # ]
+if __name__ == "__main__":
+    data_type = settings['project']['data_type']
+    module_3_name, module_3_dir = get_module(3)
+    module_4_name, module_4_dir = get_module(4)
+    gene_list = settings['modules']['ViewImages']['gene_list'] 
 
-    # run_view_images(prev_module_dir, module_dir, module_name, gene_list)
+    run_view_images(data_type, module_3_dir, module_4_dir, gene_list)
