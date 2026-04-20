@@ -1,0 +1,73 @@
+# An example configuration file for recode_st
+
+log_level = "INFO" # Define the logging level here. Options are: DEBUG, INFO, WARNING, ERROR, CRITICAL
+seed = 21122023    # Random seed for reproducibility
+
+[project]
+analysis_name = "Kitam"
+data_type = "CosMx"
+
+[io]
+base_dir = "."                         # Base directory for the project (relative to the current working directory)
+data_dir = "data"       
+dataset_id = "Quarter"                # Directory where the input data is stored (relative to base_dir) (CosMx)
+output_dir = "analysis"                # Directory where the output will be saved (relative to base_dir)
+dataset_dir = "../Kitam"                  # Directory containing dataset (Xenium / CosMx) (relative to data_dir)
+zarr_dir = "../Kitam.zarr"               # Directory where Zarr data will be stored (relative to data_dir)
+area_path = "selected_cells_stats.csv" # Path to the CSV file containing selected cells statistics (relative to data_dir) # only for Xenium?
+logging_path = "logs"                  # Directory where logs will be saved (relative to output_dir)
+
+[pipeline]
+modules = [
+    "0_format",
+    "1_QualityControl",
+    "2_DimensionReduction",
+    "3_Annotate",
+    "4_ViewImages",
+    "5_SpatialStat",
+    "6_MuSpan"
+]
+
+[modules.QualityControl]
+min_counts = 50 # Minimum number of counts required for a cell to pass filtering
+min_cells = 5 # Minimum number of cells expressed required for a gene to pass filtering
+min_dapi = 100 # Minimum mean DAPI intensity required for a gene to pass filtering (CosMx)
+
+
+[modules.DimensionReduction]
+n_comps = 50  # number of principal components to compute                        
+n_neighbors = 15  # number of neighbors for the neighborhood graph                    
+resolution = 0.2  # resolution for leiden clustering                  
+cluster_name = "leiden"  # name of the cluster column in adata.obs  
+
+[modules.Annotate]
+new_clusters = "cell_type" 
+
+[modules.ViewImages]
+gene_list = [ # List of genes to visualize on tissue
+    "Nrgn",
+    "Plp1",
+    "Plpp3",
+    "Bsg",
+    "Tcf7l2",
+]
+
+[modules.MuSpan]
+fov = "32" 
+
+transcripts = [ # List of genes to visualize on tissue
+    "Nrgn",
+    "Plp1",
+    "Plpp3",
+    "Bsg",
+    "Tcf7l2",
+]
+
+cluster_labels = "cell_type"
+
+min_edge_distance = 0
+max_edge_distance = 200
+distance_list = [50, 90, 120] # distance for proximity networks is larger
+min_edge_distance_shape = 0
+max_edge_distance_shape = 1
+k_list = [2, 5, 10, 15]
