@@ -1,8 +1,15 @@
 """Module for formatting CosMx/Xenium data into Zarr format."""
 
+import warnings
+from logging import getLogger
+
 from spatialdata_io import cosmx, xenium
 from pathlib import Path 
 from config import settings
+import os
+
+warnings.filterwarnings("ignore")
+logger = getLogger(__name__)
 
 def convert_to_zarr(data_type: str, dataset_path: Path, dataset_id: str, zarr_path: Path):
     """Convert Xenium/CosMx data to Zarr format."""
@@ -13,26 +20,31 @@ def convert_to_zarr(data_type: str, dataset_path: Path, dataset_id: str, zarr_pa
     if data_type == "CosMx":
         try:
             # Load CosMx data
-            print("Reading CosMx data...")
+            logger.info("Reading CosMx data...")
+            logger.info(f"Dataset path: {dataset_path}, Dataset ID: {dataset_id}")
+            cwd = os.getcwd() 
+            logger.info("Current Working Directory:", cwd)
+
+            # exit()
             sdata = cosmx(path=dataset_path, dataset_id=dataset_id)
         except FileNotFoundError as err:
-            print(f"File not found: {err}")
+            logger.info(f"File not found: {err}")
             raise err
     elif data_type == "Xenium":
         try:
             # Load Xenium data
-            print("Reading Xenium data...")
+            logger.info("Reading Xenium data...")
             sdata = xenium(dataset_path)
         except FileNotFoundError as err:
-            print(f"File not found: {err}")
+            logger.info(f"File not found: {err}")
             raise err
 
     try:
         # Write to Zarr format
-        print("Writing to Zarr...")
+        logger.info("Writing to Zarr...")
         sdata.write(zarr_path, overwrite=True)
     except ValueError as err:
-        print(f"Failed writing to Zarr: {err}")
+        logger.info(f"Failed writing to Zarr: {err}")
         raise err
 
 

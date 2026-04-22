@@ -1,11 +1,14 @@
 """Annotation module."""
-
+import warnings
+from logging import getLogger
 
 import pandas as pd
 import scanpy as sc
 from pathlib import Path 
 from config import settings, get_module
 
+warnings.filterwarnings("ignore")
+logger = getLogger(__name__)
 
 def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_module_dir):
     """Run annotation."""
@@ -14,7 +17,7 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
     module_dir.mkdir(exist_ok=True)
 
     # Import data
-    print("Loading data...")
+    logger.info("Loading data...")
     adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
 
     # Set the directory where to save the ScanPy figures
@@ -23,10 +26,10 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
     # Annotate cell clusters
     # Calculate the differentially expressed genes for every cluster,
     # compared to the rest of the cells in our adata
-    print("Calculating differentially expressed genes for each cluster...")
+    logger.info("Calculating differentially expressed genes for each cluster...")
     sc.tl.rank_genes_groups(adata, groupby=cluster_name, method="wilcoxon")
 
-    print("Plotting the top differentially expressed genes for each cluster...")
+    logger.info("Plotting the top differentially expressed genes for each cluster...")
     sc.pl.rank_genes_groups_dotplot(
         adata,
         groupby=cluster_name,
@@ -35,10 +38,10 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
         show=False,
         save=f"{module_name}.png",
     )
-    print(f"Dotplot saved to {sc.settings.figdir}")
+    logger.info(f"Dotplot saved to {sc.settings.figdir}")
 
     # Plot differentially expressed genes for each cluster
-    print("Plot differentially expressed genes for each cluster in elbow plot...")
+    logger.info("Plot differentially expressed genes for each cluster in elbow plot...")
     sc.pl.rank_genes_groups(
         adata,
         n_genes=10,
@@ -47,20 +50,20 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
         show=False,
         save=f"_{module_name}.png",
     )
-    print(f"UMAP plot saved to {sc.settings.figdir}")
+    logger.info(f"UMAP plot saved to {sc.settings.figdir}")
 
     # Make a dataframe of marker expression
-    print("Save files for differentially expressed genes for each cluster...")
-    print("File 1...")
+    logger.info("Save files for differentially expressed genes for each cluster...")
+    logger.info("File 1...")
     markers = sc.get.rank_genes_groups_df(adata, None)
     markers = markers[(markers["pvals_adj"] < 0.05) & (markers["logfoldchanges"] > 0.5)]
     markers.to_excel(
         module_dir / "markers.xlsx",
         index=False,
     )
-    print(f"Markers saved to {module_dir}")
+    logger.info(f"Markers saved to {module_dir}")
 
-    print("File 2...")
+    logger.info("File 2...")
     # Define the number of clusters
     clusters_list = len(adata.obs[cluster_name].astype(str).unique())
 
@@ -83,15 +86,15 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
         module_dir / "top_differentially_expressed_genes.csv",
         index=True,
     )
-    print(f"Top differentially expressed genes saved to {module_dir}")
+    logger.info(f"Top differentially expressed genes saved to {module_dir}")
 
-    print("File 3...")
+    logger.info("File 3...")
     # Create a dictionary to store DataFrames for each cluster
     cluster_dict = {}
     cluster_path = module_dir / "cluster_diff_genes"
     cluster_path.mkdir(exist_ok=True)
     for cluster_number in range(clusters_list):
-        # print(cluster_number)
+        # logger.info(cluster_number)
         current_cluster = markers[markers["group"] == str(cluster_number)].sort_values(
             by="logfoldchanges", ascending=False
         )  # make a dataframe of the current cluster
@@ -102,10 +105,10 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
         csv_filename = cluster_path / f"cluster_{cluster_number}_data.csv"
 
         current_cluster.to_csv(csv_filename, index=False)
-        print(f"Exported cluster {cluster_number} data to {csv_filename}")
+        logger.info(f"Exported cluster {cluster_number} data to {csv_filename}")
 
     # Rename the clusters based on the markers
-    print("Renaming clusters based on markers...")
+    logger.info("Renaming clusters based on markers...")
     # Get unique clusters
     unique_clusters = (
         adata.obs[cluster_name].astype(str).unique()
@@ -119,8 +122,8 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
 
     # Save anndata object
     adata.write_h5ad(module_dir / "adata.h5ad")
-    print(f"Data saved to {module_dir / 'adata.h5ad'}")
-    print("Annotation module completed successfully.")
+    logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
+    logger.info("Annotation module completed successfully.")
 
 
 if __name__ == "__main__":

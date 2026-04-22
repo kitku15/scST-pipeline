@@ -1,4 +1,6 @@
 """Quality control module."""
+import warnings
+from logging import getLogger
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,6 +10,8 @@ import spatialdata as sd
 from pathlib import Path 
 from config import settings, get_module
 
+warnings.filterwarnings("ignore")
+logger = getLogger(__name__)
 
 def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
 
@@ -25,8 +29,8 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
     # Save anndata object (stored in spatialdata.tables layer)
     adata = sdata.tables["table"] 
 
-    print('printing adata obs collumns-----')
-    print(adata.obs.columns)
+    logger.info('logger.infoing adata obs collumns-----')
+    logger.info(adata.obs.columns)
 
     # exit()
 
@@ -42,7 +46,7 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
         percent_top=(10, 20, 50, 150), 
         inplace=True
     )
-    # print(adata.obs.columns)
+    # logger.info(adata.obs.columns)
 
 
     # 3. Use the new columns scanpy just generated for us
@@ -53,21 +57,21 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
         adata.obs["total_counts_is_control_codeword"].sum() / adata.obs["total_counts"].sum() * 100
     )
 
-    print(f"Negative DNA probe count % : {cprobes:.4f}%")
-    print(f"Negative decoding count % : {cwords:.4f}%")
+    logger.info(f"Negative DNA probe count % : {cprobes:.4f}%")
+    logger.info(f"Negative decoding count % : {cwords:.4f}%")
 
     # Calculate averages
     avg_total_counts = np.mean(adata.obs["total_counts"])
-    print(f"Average number of transcripts per cell: {avg_total_counts:.2f}")
+    logger.info(f"Average number of transcripts per cell: {avg_total_counts:.2f}")
 
     avg_total_unique_counts = np.mean(adata.obs["n_genes_by_counts"])
-    print(f"Average unique transcripts per cell: {avg_total_unique_counts:.2f}")
+    logger.info(f"Average unique transcripts per cell: {avg_total_unique_counts:.2f}")
 
     area_max = np.max(adata.obs[area_col]) 
     area_min = np.min(adata.obs[area_col])
 
-    print(f"Max cell area: {area_max}")
-    print(f"Min cell area: {area_min}")
+    logger.info(f"Max cell area: {area_max}")
+    logger.info(f"Min cell area: {area_min}")
 
     # plot raw data
     plot_metrics(module_dir, adata, area_col, DAPI_filter)
@@ -75,10 +79,10 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
     # $ QC data #
 
     # Filter cells
-    print("Filtering cells and genes...")
+    logger.info("Filtering cells and genes...")
 
     if DAPI_filter:
-        print("Applying DAPI filter...")
+        logger.info("Applying DAPI filter...")
         # Filter out the 'empty' cells seen in your DAPI histogram
         adata = adata[adata.obs["Mean.DAPI"] > min_dapi].copy() 
 
@@ -86,7 +90,7 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
     sc.pp.filter_genes(adata, min_cells=min_cells)
 
     # Normalize data
-    print("Normalize data...")
+    logger.info("Normalize data...")
     adata.layers["counts"] = adata.X.copy()  # make copy of raw data
     sc.pp.normalize_total(adata, inplace=True)  # normalize data
     sc.pp.log1p(adata)  # Log transform data
@@ -102,8 +106,8 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
 
     # Save data
     adata.write_h5ad(module_dir / "adata.h5ad")
-    print(f"Data saved to {module_dir / 'adata.h5ad'}")
-    print("Quality control completed successfully.")
+    logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
+    logger.info("Quality control completed successfully.")
 
 
 def plot_metrics(module_dir, adata, area_col, DAPI_filter):
@@ -141,7 +145,7 @@ def plot_metrics(module_dir, adata, area_col, DAPI_filter):
     out_file = module_dir / "cell_summary_histograms.png"
     plt.savefig(out_file, dpi=300)
     plt.close()
-    print(f"Saved plots to {out_file.absolute()}")
+    logger.info(f"Saved plots to {out_file.absolute()}")
 
 
 # Use pathlib.Path so the '/' operator in the function works correctly

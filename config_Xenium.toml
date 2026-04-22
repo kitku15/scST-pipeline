@@ -1,4 +1,4 @@
-# An example configuration file for recode_st
+# An example configuration file for General Spatial Transcriptomics pipeline for Xenium dataset
 
 log_level = "INFO" # Define the logging level here. Options are: DEBUG, INFO, WARNING, ERROR, CRITICAL
 seed = 21122023    # Random seed for reproducibility
@@ -9,11 +9,10 @@ data_type = "Xenium"
 
 [io]
 base_dir = "."                         # Base directory for the project (relative to the current working directory)
-data_dir = "data"                   # Directory where the input data is stored (relative to base_dir) (CosMx)
 dataset_id = ""                
 output_dir = "analysis"                # Directory where the output will be saved (relative to base_dir)
-dataset_dir = "../Tisku"                  # Directory containing dataset (Xenium / CosMx) (relative to data_dir)
-zarr_dir = "../Tisku.zarr"               # Directory where Zarr data will be stored (relative to data_dir)
+dataset_dir = "data/Tisku"                  # Directory containing dataset (Xenium / CosMx) (relative to data_dir)
+zarr_dir = "data/Tisku.zarr"               # Directory where Zarr data will be stored (relative to data_dir)
 area_path = "selected_cells_stats.csv" # Path to the CSV file containing selected cells statistics (relative to data_dir) # only for Xenium?
 logging_path = "logs"                  # Directory where logs will be saved (relative to output_dir)
 
@@ -72,3 +71,7 @@ distance_list = [10, 20, 50]
 min_edge_distance_shape = 0
 max_edge_distance_shape = 1
 k_list = [2, 5, 10, 15]
+
+# Path to the CSV file containing selected cells statistics (relative to data_dir) for Xenium only?
+area_path = "Xenium_SelectedCells.csv" 
+

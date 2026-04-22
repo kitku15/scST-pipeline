@@ -6,10 +6,10 @@ from logging import getLogger
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+from config import settings, get_module 
 
 
 warnings.filterwarnings("ignore")
-
 logger = getLogger(__name__)
 
 # Import muspan at module level
@@ -37,7 +37,7 @@ def run_muspan_graph(module_dir, muspan_object, min_edge_distance, max_edge_dist
 
     # Import data
     logger.info("Loading MuSpAn object...")
-    domain = ms.io.load_domain(path_to_domain=str(module_dir / muspan_object))
+    domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
     # Create delanuay triangulation spatial graph
     logger.info("Creating Delaunay triangulation spatial graph...")
@@ -67,11 +67,15 @@ def run_muspan_graph(module_dir, muspan_object, min_edge_distance, max_edge_dist
     # Confirm the domain has the expected labels
     logger.info(f"Networks in domain: {domain.networks.keys()}")
 
+    domain_path = Path(muspan_object)
+    domain_name = domain_path.stem
+    domain_dir = domain_path.parent
+
     # Save domain
     ms.io.save_domain(
         domain,
-        name_of_file="muspan_object",
-        path_to_save=str(module_dir),
+        name_of_file =str(domain_name),
+        path_to_save=str(domain_dir),
     )
     logger.info("Domain saved")
 
@@ -400,21 +404,25 @@ def plot_proximity_networks(domain, module_dir, color_map, distance_list):
 
 if __name__ == "__main__":
 
-    fov = '8'
-    module_dir = Path("analysis/6_MuSpan")
-    muspan_object = f"muspan_object_fov_{fov}.muspan"
-    cluster_labels = "cell_type"
+    module_6_name, module_6_dir = get_module(6)
 
-    min_edge_distance = 0
-    max_edge_distance = 200
+    fov = settings['modules']['MuSpan']['fov']
+    muspan_files = list(module_6_dir.glob("*.muspan"))
 
-    distance_list = [50, 90, 120] # distance for proximity networks is larger
+    if not muspan_files:
+        raise FileNotFoundError("No .muspan file found")
 
-    min_edge_distance_shape = 0
-    max_edge_distance_shape = 1
+    muspan_object = muspan_files[0] # we only expect one muspan domain file 
 
-    k_list = [2, 5, 10, 15]
+    cluster_labels = settings['modules']['MuSpan']['cluster_labels']  
 
-    run_muspan_graph(module_dir, muspan_object, min_edge_distance, max_edge_distance, distance_list, min_edge_distance_shape, max_edge_distance_shape, k_list)
+    min_edge_distance = settings['modules']['MuSpan']['min_edge_distance']
+    max_edge_distance = settings['modules']['MuSpan']['max_edge_distance']
+    distance_list = settings['modules']['MuSpan']['distance_list']
+    min_edge_distance_shape = settings['modules']['MuSpan']['min_edge_distance_shape']
+    max_edge_distance_shape = settings['modules']['MuSpan']['max_edge_distance_shape']
+    k_list = settings['modules']['MuSpan']['k_list']
+
+    run_muspan_graph(module_6_dir, muspan_object, min_edge_distance, max_edge_distance, distance_list, min_edge_distance_shape, max_edge_distance_shape, k_list)
 
    
