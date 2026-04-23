@@ -1,5 +1,11 @@
 analysis_Kitam/
+analysis_Kitam_old/
 Kitam/
 Kitam.zarr/
 Modules/__pycache__/
 MuSpan_explore.ipynb
+Modules\Kitam.zarr/
+Tisku/
+analysis_Tisku/
+Tisku.zarr/
+.kupavenv/

@@ -1,10 +1,14 @@
 """Muspan module - spatial statistics and graph analysis."""
-
+import warnings
+from logging import getLogger
 
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
+from config import settings, get_module
 
+warnings.filterwarnings("ignore")
+logger = getLogger(__name__)
 
 def calculate_and_plot_cross_pcf(
     ms,
@@ -21,7 +25,7 @@ def calculate_and_plot_cross_pcf(
     """Calculates and plots the cross-PCF for two selected cell types."""
     cell_type_indices = list(cell_type_indices)
 
-    print(unique_clusters)
+    logger.info(unique_clusters)
     try:
         cell_type_1 = unique_clusters[cell_type_indices[0]]
         cell_type_2 = unique_clusters[cell_type_indices[1]]
@@ -30,7 +34,7 @@ def calculate_and_plot_cross_pcf(
             "Cell type indices are out of range of the unique cluster list."
         )
 
-    print(f"Calculating cross-PCF for {cell_type_1} and {cell_type_2}...")
+    logger.info(f"Calculating cross-PCF for {cell_type_1} and {cell_type_2}...")
 
     # Query populations
     pop_A = ms.query.query(domain, ("label", cluster_labels), "is", str(cell_type_1))
@@ -52,7 +56,7 @@ def calculate_and_plot_cross_pcf(
         module_dir / f"cross_pair_correlation_function_{cell_type_1}_{cell_type_2}.png"
     )
     plt.savefig(pcf_plot_path)
-    print(f"Cross-PCF plot saved at {pcf_plot_path}")
+    logger.info(f"Cross-PCF plot saved at {pcf_plot_path}")
 
     # Visualize and save cell type points
     query_1_2 = ms.query.query(
@@ -74,7 +78,7 @@ def calculate_and_plot_cross_pcf(
 
     vis_plot_path = module_dir / f"visualize_{cell_type_1}_{cell_type_2}.png"
     plt.savefig(vis_plot_path)
-    print(f"Visualization saved at {vis_plot_path}")
+    logger.info(f"Visualization saved at {vis_plot_path}")
 
 
 def calculate_pairwise_cross_pcf(
@@ -96,7 +100,7 @@ def calculate_pairwise_cross_pcf(
 
             pop_A = ms.query.query(domain, ("label", cluster_labels), "is", cluster_i)
             pop_B = ms.query.query(domain, ("label", cluster_labels), "is", cluster_j)
-            print(f"Calculating cross-PCF: {cluster_i} vs {cluster_j}")
+            logger.info(f"Calculating cross-PCF: {cluster_i} vs {cluster_j}")
 
             r, pcf = ms.spatial_statistics.cross_pair_correlation_function(
                 domain,
@@ -117,7 +121,7 @@ def calculate_pairwise_cross_pcf(
     plt.tight_layout()
     output_path = Path(module_dir) / "cross_pair_correlation_function_all.png"
     plt.savefig(output_path)
-    print(f"Cross-PCF matrix plot saved at {output_path}")
+    logger.info(f"Cross-PCF matrix plot saved at {output_path}")
 
 
 def run_muspan_stats(module_dir, muspan_object, cluster_labels):
@@ -125,7 +129,7 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
     try:
         import muspan as ms
     except ModuleNotFoundError as err:
-        print(
+        logger.info(
             "Could not load MuSpAn. Install with:\n"
             "    pip install 'recode_st[muspan]' @ git+https://github.com/ImperialCollegeLondon/ReCoDe-spatial-transcriptomics.git"
         )
@@ -134,17 +138,17 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
     module_dir.mkdir(exist_ok=True)
 
     # Load MuSpAn object
-    print("Loading MuSpAn object...")
-    domain = ms.io.load_domain(path_to_domain=str(module_dir / muspan_object))
+    logger.info("Loading MuSpAn object...")
+    domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
 
     # Get cluster labels
     all_cluster_labels = domain.labels[cluster_labels]["labels"].tolist()
     unique_clusters = np.unique(all_cluster_labels).astype(str).tolist()
-    print(f"Found {len(unique_clusters)} unique cell types.")
+    logger.info(f"Found {len(unique_clusters)} unique cell types.")
 
     # Run pairwise analysis for specific pair
-    print("Calculating pairwise cross-PCF for selected cell types...")
+    logger.info("Calculating pairwise cross-PCF for selected cell types...")
     calculate_and_plot_cross_pcf(
         ms=ms,
         domain=domain,
@@ -155,7 +159,7 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
     )
 
     # Full pairwise matrix
-    print("Calculating pairwise cross-PCF for all cell types...")
+    logger.info("Calculating pairwise cross-PCF for all cell types...")
     calculate_pairwise_cross_pcf(
         ms=ms,
         domain=domain,
@@ -166,10 +170,17 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
 
 
 if __name__ == "__main__":
+        
+    module_6_name, module_6_dir = get_module(6)
 
-    fov = '8'
-    module_dir = Path("analysis/6_MuSpan")
-    muspan_object = f"muspan_object_fov_{fov}.muspan"
-    cluster_labels = "cell_type"
+    fov = settings['modules']['MuSpan']['fov']
+    muspan_files = list(module_6_dir.glob("*.muspan"))
 
-    run_muspan_stats(module_dir, muspan_object, cluster_labels)
+    if not muspan_files:
+        raise FileNotFoundError("No .muspan file found")
+
+    muspan_object = muspan_files[0] # we only expect one muspan domain file 
+
+    cluster_labels = settings['modules']['MuSpan']['cluster_labels']     
+
+    run_muspan_stats(module_6_dir, muspan_object, cluster_labels)

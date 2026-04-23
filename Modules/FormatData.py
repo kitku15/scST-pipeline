@@ -1,33 +1,62 @@
-"""Module for formatting CosMx data into Zarr format."""
+"""Module for formatting CosMx/Xenium data into Zarr format."""
 
-from spatialdata_io import cosmx
+import warnings
+from logging import getLogger
+
+from spatialdata_io import cosmx, xenium
 from pathlib import Path 
+from config import settings
+import os
+import gc
 
+warnings.filterwarnings("ignore")
+logger = getLogger(__name__)
 
-def convert_CosMx_to_zarr(cosmx_path: Path, dataset_id: str, zarr_path: Path):
-    """Convert CosMx data to Zarr format."""
-    try:
-        # Load CosMx data
-        print("Reading CosMx data...")
-        sdata = cosmx(path=cosmx_path, dataset_id=dataset_id)
-    except FileNotFoundError as err:
-        print(f"File not found: {err}")
-        raise err
+def convert_to_zarr(data_type: str, dataset_path: Path, dataset_id: str, zarr_path: Path):
+    """Convert Xenium/CosMx data to Zarr format."""
+
+    if data_type not in ["CosMx", "Xenium"]:
+        raise ValueError(f"Unsupported data type: {data_type}. Expected 'CosMx' or 'Xenium'.")
+    
+    if data_type == "CosMx":
+        try:
+            # Load CosMx data
+            logger.info("Reading CosMx data...")
+            logger.info(f"Dataset path: {dataset_path}, Dataset ID: {dataset_id}")
+            # cwd = os.getcwd() 
+            # logger.info("Current Working Directory:", cwd)
+
+            # exit()
+            abs_dataset_path = os.path.abspath(dataset_path)
+            sdata = cosmx(path=abs_dataset_path, dataset_id=dataset_id)
+        except FileNotFoundError as err:
+            logger.info(f"File not found: {err}")
+            raise err
+    elif data_type == "Xenium":
+        try:
+            # Load Xenium data
+            logger.info("Reading Xenium data...")
+            sdata = xenium(dataset_path)
+        except FileNotFoundError as err:
+            logger.info(f"File not found: {err}")
+            raise err
 
     try:
         # Write to Zarr format
-        print("Writing to Zarr...")
+        logger.info("Writing to Zarr...")
         sdata.write(zarr_path, overwrite=True)
+        del sdata # Free up memory after writing to Zarr
+        gc.collect() 
     except ValueError as err:
-        print(f"Failed writing to Zarr: {err}")
+        logger.info(f"Failed writing to Zarr: {err}")
         raise err
 
 
 if __name__ == "__main__":
 
-    # path=r"C:\Users\bunga\python\Project2\CosMx\Lung13+SMI+Flat+data\Lung13\Lung13-Flat_files_and_images"
-    path=r"C:\Users\bunga\python\Project2\CosMx\Kitam"
-    dataset_id="Quarter"
-    zarr_path = Path("Kitam.zarr")
-    
-    convert_CosMx_to_zarr(path, dataset_id, zarr_path)
+    dataset_path = settings['io']['dataset_dir']
+    dataset_id = settings['io']['dataset_id']
+    zarr_path = settings['io']['zarr_dir']
+    data_type = settings['project']['data_type']
+
+    convert_to_zarr(data_type, dataset_path, dataset_id, zarr_path)
