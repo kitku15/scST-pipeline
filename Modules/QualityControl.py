@@ -9,6 +9,7 @@ import seaborn as sns
 import spatialdata as sd
 from pathlib import Path 
 from config import settings, get_module
+import gc
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -28,6 +29,9 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
 
     # Save anndata object (stored in spatialdata.tables layer)
     adata = sdata.tables["table"] 
+
+    del sdata # Free up memory by deleting the spatialdata object
+    gc.collect()
 
     logger.info('logger.infoing adata obs collumns-----')
     logger.info(adata.obs.columns)
@@ -102,7 +106,7 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
     adata.raw = adata
     
     # Scale the data so highly expressed genes don't overpower the PCA
-    sc.pp.scale(adata, max_value=10)
+    sc.pp.scale(adata, max_value=10) # Sparse to Dense Matrix Conversion (storing every single zero as a physical number in RAM) 
 
     # Save data
     adata.write_h5ad(module_dir / "adata.h5ad")

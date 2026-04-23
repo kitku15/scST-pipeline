@@ -7,6 +7,7 @@ from spatialdata_io import cosmx, xenium
 from pathlib import Path 
 from config import settings
 import os
+import gc
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -44,6 +45,8 @@ def convert_to_zarr(data_type: str, dataset_path: Path, dataset_id: str, zarr_pa
         # Write to Zarr format
         logger.info("Writing to Zarr...")
         sdata.write(zarr_path, overwrite=True)
+        del sdata # Free up memory after writing to Zarr
+        gc.collect() 
     except ValueError as err:
         logger.info(f"Failed writing to Zarr: {err}")
         raise err

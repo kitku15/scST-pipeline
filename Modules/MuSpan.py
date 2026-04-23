@@ -91,11 +91,21 @@ def run_muspan(
         # Transcripts
         points_key = f"{fov_id}_points"
         logger.info(f"Loading transcripts from {points_key}...")
-        df_pts = sdata.points[points_key].compute()
+
+        # df_pts = sdata.points[points_key].compute()
         
+        # if transcripts_of_interest is not None:
+        #     df_pts['target'] = df_pts['target'].astype(str)
+        #     df_pts = df_pts[df_pts['target'].isin(transcripts_of_interest)]
+
+        #  filter the Dask dataframe before pulling it into memory.
+        df_pts_dask = sdata.points[points_key]
         if transcripts_of_interest is not None:
+            # Filter lazily, THEN compute
+            df_pts = df_pts_dask[df_pts_dask['target'].isin(transcripts_of_interest)].compute()
             df_pts['target'] = df_pts['target'].astype(str)
-            df_pts = df_pts[df_pts['target'].isin(transcripts_of_interest)]
+        else:
+            df_pts = df_pts_dask.compute()
         
         meta_df = pd.read_csv(Path(flat_files_dir) / 'Quarter_metadata_file.csv') 
         
