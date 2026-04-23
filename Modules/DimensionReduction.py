@@ -1,23 +1,32 @@
 """Dimension reduction module."""
+
 import warnings
 from logging import getLogger
 
 import scanpy as sc
 import squidpy as sq
-from pathlib import Path 
 from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
-def run_dimension_reduction(data_type, prev_module_dir, module_dir, module_name, n_comps, n_neighbors, resolution, cluster_name):
 
+def run_dimension_reduction(
+    data_type,
+    prev_module_dir,
+    module_dir,
+    module_name,
+    n_comps,
+    n_neighbors,
+    resolution,
+    cluster_name,
+):
     """Run dimension reduction on CosMx data."""
 
     if data_type == "CosMx":
         spatial_key = "global"
     elif data_type == "Xenium":
-        spatial_key = "spatial" 
+        spatial_key = "spatial"
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
@@ -42,7 +51,9 @@ def run_dimension_reduction(data_type, prev_module_dir, module_dir, module_name,
     logger.info(f"PCA Variance plot saved to {sc.settings.figdir}")
 
     logger.info("Compute neighbors...")
-    sc.pp.neighbors(adata, n_neighbors=n_neighbors, n_pcs=15)  # compute a neighborhood graph
+    sc.pp.neighbors(
+        adata, n_neighbors=n_neighbors, n_pcs=15
+    )  # compute a neighborhood graph
 
     logger.info("Create UMAPs and cluster cells..")
     sc.tl.umap(adata)  # calculate umap
@@ -75,12 +86,12 @@ def run_dimension_reduction(data_type, prev_module_dir, module_dir, module_name,
     sq.pl.spatial_scatter(
         adata,
         color=[cluster_name],
-        spatial_key=spatial_key, 
+        spatial_key=spatial_key,
         shape=None,
-        size=0.05,             # Use a very small size for the full slide
+        size=0.05,  # Use a very small size for the full slide
         alpha=0.6,
         frameon=False,
-        img=True, 
+        img=True,
         save=f"{cluster_name}_full_stitched.png",
     )
 
@@ -88,14 +99,14 @@ def run_dimension_reduction(data_type, prev_module_dir, module_dir, module_name,
         sq.pl.spatial_scatter(
             adata,
             color=[cluster_name],
-            library_key="fov",     # Use the 'fov' column from your adata.obs
-            ncols=4,               # Arrange in 4 columns
-            shape=None,            # Circles
-            size=1,                # Adjust size if dots are too big/small
-            img=True,             # Keep False until we confirm coordinates are right
-            save=f"{cluster_name}_by_fov.png"
+            library_key="fov",  # Use the 'fov' column from your adata.obs
+            ncols=4,  # Arrange in 4 columns
+            shape=None,  # Circles
+            size=1,  # Adjust size if dots are too big/small
+            img=True,  # Keep False until we confirm coordinates are right
+            save=f"{cluster_name}_by_fov.png",
         )
-        
+
     logger.info(f"{cluster_name} spatial scatter plot saved to {module_dir}")
 
     # Save anndata object
@@ -104,14 +115,23 @@ def run_dimension_reduction(data_type, prev_module_dir, module_dir, module_name,
 
 
 if __name__ == "__main__":
-    data_type = settings['project']['data_type']
+    data_type = settings["project"]["data_type"]
 
     module_1_name, module_1_dir = get_module(1)
     module_2_name, module_2_dir = get_module(2)
-   
-    n_comps = settings['modules']['DimensionReduction']['n_comps']                    
-    n_neighbors = settings['modules']['DimensionReduction']['n_neighbors']                       
-    resolution = settings['modules']['DimensionReduction']['resolution']                      
-    cluster_name = settings['modules']['DimensionReduction']['cluster_name']   
 
-    run_dimension_reduction(data_type, module_1_dir, module_2_dir, module_2_name, n_comps, n_neighbors, resolution, cluster_name)
+    n_comps = settings["modules"]["DimensionReduction"]["n_comps"]
+    n_neighbors = settings["modules"]["DimensionReduction"]["n_neighbors"]
+    resolution = settings["modules"]["DimensionReduction"]["resolution"]
+    cluster_name = settings["modules"]["DimensionReduction"]["cluster_name"]
+
+    run_dimension_reduction(
+        data_type,
+        module_1_dir,
+        module_2_dir,
+        module_2_name,
+        n_comps,
+        n_neighbors,
+        resolution,
+        cluster_name,
+    )

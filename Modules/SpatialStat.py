@@ -1,14 +1,15 @@
 """Spatial statistics module."""
+
 import warnings
 from logging import getLogger
 
 import scanpy as sc
 import squidpy as sq
-from pathlib import Path 
 from config import get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
+
 
 def run_spatial_statistics(module_dir, prev_module_dir):
     """Run spatial statistics."""
@@ -16,7 +17,7 @@ def run_spatial_statistics(module_dir, prev_module_dir):
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
 
-    sc.settings.figdir = module_dir # set the figures dir to not be figures 
+    sc.settings.figdir = module_dir  # set the figures dir to not be figures
 
     # Import data
     logger.info("Loading data...")
@@ -109,5 +110,3 @@ if __name__ == "__main__":
     module_5_name, module_5_dir = get_module(5)
 
     run_spatial_statistics(module_5_dir, module_4_dir)
-
-    

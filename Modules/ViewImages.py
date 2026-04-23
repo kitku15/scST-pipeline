@@ -1,14 +1,15 @@
 """Image viewing module."""
+
 import warnings
 from logging import getLogger
 
 import scanpy as sc
 import squidpy as sq
-from pathlib import Path 
 from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
+
 
 def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
     """Run the image viewing module."""
@@ -16,13 +17,12 @@ def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
     if data_type == "CosMx":
         spatial_key = "global"
     elif data_type == "Xenium":
-        spatial_key = "spatial" 
+        spatial_key = "spatial"
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
 
-    sc.settings.figdir = module_dir # set the figures dir to not be figures 
-
+    sc.settings.figdir = module_dir  # set the figures dir to not be figures
 
     # Import data
     logger.info("Loading data...")
@@ -63,9 +63,9 @@ def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
 
 
 if __name__ == "__main__":
-    data_type = settings['project']['data_type']
+    data_type = settings["project"]["data_type"]
     module_3_name, module_3_dir = get_module(3)
     module_4_name, module_4_dir = get_module(4)
-    gene_list = settings['modules']['ViewImages']['gene_list'] 
+    gene_list = settings["modules"]["ViewImages"]["gene_list"]
 
     run_view_images(data_type, module_3_dir, module_4_dir, gene_list)

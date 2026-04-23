@@ -13,7 +13,9 @@ def configure_logging(logging_dir: Path | None = None, log_level=logging.INFO):
     if logging_dir is None:
         logging_dir = Path("analysis/logs")
 
-    logger = logging.getLogger()  # Configure root logger so all loggers inherit handlers
+    logger = (
+        logging.getLogger()
+    )  # Configure root logger so all loggers inherit handlers
     logger.setLevel(log_level)
 
     ch = logging.StreamHandler()

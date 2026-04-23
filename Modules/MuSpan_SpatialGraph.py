@@ -6,7 +6,7 @@ from logging import getLogger
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from config import settings, get_module 
+from config import settings, get_module
 
 
 warnings.filterwarnings("ignore")
@@ -19,7 +19,16 @@ except ModuleNotFoundError:
     ms = None
 
 
-def run_muspan_graph(module_dir, muspan_object, min_edge_distance, max_edge_distance, distance_list, min_edge_distance_shape, max_edge_distance_shape, k_list):
+def run_muspan_graph(
+    module_dir,
+    muspan_object,
+    min_edge_distance,
+    max_edge_distance,
+    distance_list,
+    min_edge_distance_shape,
+    max_edge_distance_shape,
+    k_list,
+):
     """Run Muspan spatial graph analysis on Xenium data."""
     if ms is None:
         logger.error(
@@ -74,7 +83,7 @@ def run_muspan_graph(module_dir, muspan_object, min_edge_distance, max_edge_dist
     # Save domain
     ms.io.save_domain(
         domain,
-        name_of_file =str(domain_name),
+        name_of_file=str(domain_name),
         path_to_save=str(domain_dir),
     )
     logger.info("Domain saved")
@@ -403,26 +412,32 @@ def plot_proximity_networks(domain, module_dir, color_map, distance_list):
 
 
 if __name__ == "__main__":
-
     module_6_name, module_6_dir = get_module(6)
 
-    fov = settings['modules']['MuSpan']['fov']
+    fov = settings["modules"]["MuSpan"]["fov"]
     muspan_files = list(module_6_dir.glob("*.muspan"))
 
     if not muspan_files:
         raise FileNotFoundError("No .muspan file found")
 
-    muspan_object = muspan_files[0] # we only expect one muspan domain file 
+    muspan_object = muspan_files[0]  # we only expect one muspan domain file
 
-    cluster_labels = settings['modules']['MuSpan']['cluster_labels']  
+    cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
 
-    min_edge_distance = settings['modules']['MuSpan']['min_edge_distance']
-    max_edge_distance = settings['modules']['MuSpan']['max_edge_distance']
-    distance_list = settings['modules']['MuSpan']['distance_list']
-    min_edge_distance_shape = settings['modules']['MuSpan']['min_edge_distance_shape']
-    max_edge_distance_shape = settings['modules']['MuSpan']['max_edge_distance_shape']
-    k_list = settings['modules']['MuSpan']['k_list']
+    min_edge_distance = settings["modules"]["MuSpan"]["min_edge_distance"]
+    max_edge_distance = settings["modules"]["MuSpan"]["max_edge_distance"]
+    distance_list = settings["modules"]["MuSpan"]["distance_list"]
+    min_edge_distance_shape = settings["modules"]["MuSpan"]["min_edge_distance_shape"]
+    max_edge_distance_shape = settings["modules"]["MuSpan"]["max_edge_distance_shape"]
+    k_list = settings["modules"]["MuSpan"]["k_list"]
 
-    run_muspan_graph(module_6_dir, muspan_object, min_edge_distance, max_edge_distance, distance_list, min_edge_distance_shape, max_edge_distance_shape, k_list)
-
-   
+    run_muspan_graph(
+        module_6_dir,
+        muspan_object,
+        min_edge_distance,
+        max_edge_distance,
+        distance_list,
+        min_edge_distance_shape,
+        max_edge_distance_shape,
+        k_list,
+    )

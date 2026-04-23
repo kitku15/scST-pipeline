@@ -1,4 +1,5 @@
 """Muspan module - spatial statistics and graph analysis."""
+
 import warnings
 from logging import getLogger
 
@@ -9,6 +10,7 @@ from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
+
 
 def calculate_and_plot_cross_pcf(
     ms,
@@ -65,7 +67,6 @@ def calculate_and_plot_cross_pcf(
         "in",
         [str(cell_type_1), str(cell_type_2)],
     )
-
 
     fig, ax = ms.visualise.visualise(
         domain, color_by=("label", cluster_labels), objects_to_plot=query_1_2
@@ -141,7 +142,6 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
     logger.info("Loading MuSpAn object...")
     domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
-
     # Get cluster labels
     all_cluster_labels = domain.labels[cluster_labels]["labels"].tolist()
     unique_clusters = np.unique(all_cluster_labels).astype(str).tolist()
@@ -170,17 +170,16 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
 
 
 if __name__ == "__main__":
-        
     module_6_name, module_6_dir = get_module(6)
 
-    fov = settings['modules']['MuSpan']['fov']
+    fov = settings["modules"]["MuSpan"]["fov"]
     muspan_files = list(module_6_dir.glob("*.muspan"))
 
     if not muspan_files:
         raise FileNotFoundError("No .muspan file found")
 
-    muspan_object = muspan_files[0] # we only expect one muspan domain file 
+    muspan_object = muspan_files[0]  # we only expect one muspan domain file
 
-    cluster_labels = settings['modules']['MuSpan']['cluster_labels']     
+    cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
 
     run_muspan_stats(module_6_dir, muspan_object, cluster_labels)
