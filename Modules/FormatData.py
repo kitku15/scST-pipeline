@@ -22,11 +22,12 @@ def convert_to_zarr(data_type: str, dataset_path: Path, dataset_id: str, zarr_pa
             # Load CosMx data
             logger.info("Reading CosMx data...")
             logger.info(f"Dataset path: {dataset_path}, Dataset ID: {dataset_id}")
-            cwd = os.getcwd() 
-            logger.info("Current Working Directory:", cwd)
+            # cwd = os.getcwd() 
+            # logger.info("Current Working Directory:", cwd)
 
             # exit()
-            sdata = cosmx(path=dataset_path, dataset_id=dataset_id)
+            abs_dataset_path = os.path.abspath(dataset_path)
+            sdata = cosmx(path=abs_dataset_path, dataset_id=dataset_id)
         except FileNotFoundError as err:
             logger.info(f"File not found: {err}")
             raise err
