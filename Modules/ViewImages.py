@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
+def run_view_images(data_type, prev_module_dir, module_dir, gene_list, cluster_name):
     """Run the image viewing module."""
 
     if data_type == "CosMx":
@@ -35,7 +35,7 @@ def run_view_images(data_type, prev_module_dir, module_dir, gene_list):
         spatial_key=spatial_key,
         shape=None,
         outline=False,
-        color=["leiden", "total_counts"],
+        color=[cluster_name, "total_counts"],
         wspace=0.4,
         size=1,
         save="leiden_clusters.png",

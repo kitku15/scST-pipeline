@@ -9,3 +9,7 @@ Tisku/
 analysis_Tisku/
 Tisku.zarr/
 .kupavenv/
+tests/__pycache__/
+copy_files.sh
+run_pipeline.sh
+Xenium_SelectedCells.csv

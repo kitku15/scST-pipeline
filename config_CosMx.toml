@@ -35,11 +35,12 @@ min_dapi = 100 # Minimum mean DAPI intensity required for a gene to pass filteri
 
 [modules.DimensionReduction]
 n_comps = 50  # number of principal components to compute                        
-n_neighbors = 15  # number of neighbors for the neighborhood graph                    
-resolution = 0.2  # resolution for leiden clustering                  
+n_neighbors = [10, 15, 20]  # List of neighbors to test                    
+resolution = [0.5, 0.8, 1.0]  # List of resolutions to test                  
 cluster_name = "leiden"  # name of the cluster column in adata.obs  
 
 [modules.Annotate]
+chosen_cluster = "leiden_n20_r0.8"  # Put the exact name of the one you liked best
 new_clusters = "cell_type" 
 
 [modules.ViewImages]

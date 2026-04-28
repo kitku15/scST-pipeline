@@ -131,7 +131,7 @@ if __name__ == "__main__":
     module_2_name, module_2_dir = get_module(2)
     module_3_name, module_3_dir = get_module(3)
 
-    cluster_name = settings["modules"]["DimensionReduction"]["cluster_name"]
+    cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
     new_clusters = settings["modules"]["Annotate"]["new_clusters"]
 
     run_annotate(module_3_dir, module_3_name, cluster_name, new_clusters, module_2_dir)

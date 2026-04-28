@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def run_spatial_statistics(module_dir, prev_module_dir):
+def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     """Run spatial statistics."""
 
     # Create output directories if they do not exist
@@ -30,10 +30,10 @@ def run_spatial_statistics(module_dir, prev_module_dir):
     )  # compute connectivity
 
     logger.info("Computing and plotting centrality scores...")
-    sq.gr.centrality_scores(adata, cluster_key="leiden")
+    sq.gr.centrality_scores(adata, cluster_key=cluster_name)
     sq.pl.centrality_scores(
         adata,
-        cluster_key="leiden",
+        cluster_key=cluster_name,
         figsize=(16, 5),
         save="centrality_scores.png",
     )
@@ -51,14 +51,14 @@ def run_spatial_statistics(module_dir, prev_module_dir):
     # Visualize co-occurrence
     sq.gr.co_occurrence(
         adata_subsample,
-        cluster_key="leiden",
+        cluster_key=cluster_name,
     )
 
-    valid_clusters = list(adata_subsample.obs["leiden"].cat.categories)
+    valid_clusters = list(adata_subsample.obs[cluster_name].cat.categories)
 
     sq.pl.co_occurrence(
         adata_subsample,
-        cluster_key="leiden",
+        cluster_key=cluster_name,
         clusters=valid_clusters,
         figsize=(10, 10),
         save="co_occurrence.png",
@@ -67,12 +67,12 @@ def run_spatial_statistics(module_dir, prev_module_dir):
 
     # Neighborhood enrichment analysis
     logger.info("Performing neighborhood enrichment analysis...")
-    sq.gr.nhood_enrichment(adata, cluster_key="leiden")
+    sq.gr.nhood_enrichment(adata, cluster_key=cluster_name)
 
     # Plot neighborhood enrichment
     sq.pl.nhood_enrichment(
         adata,
-        cluster_key="leiden",
+        cluster_key=cluster_name,
         figsize=(8, 8),
         title="Neighborhood enrichment adata",
         save="nhood_enrichment.png",

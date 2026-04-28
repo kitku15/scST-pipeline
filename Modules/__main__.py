@@ -132,7 +132,7 @@ if __name__ == "__main__":
             logger.info("Running Annotate...")
             _, module_2_dir = get_module(2)
             module_3_name, module_3_dir = get_module(3)
-            cluster_name = settings["modules"]["DimensionReduction"]["cluster_name"]
+            cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
             new_clusters = settings["modules"]["Annotate"]["new_clusters"]
             run_annotate(
                 module_3_dir, module_3_name, cluster_name, new_clusters, module_2_dir
@@ -144,14 +144,18 @@ if __name__ == "__main__":
             _, module_3_dir = get_module(3)
             module_4_name, module_4_dir = get_module(4)
             gene_list = settings["modules"]["ViewImages"]["gene_list"]
-            run_view_images(data_type, module_3_dir, module_4_dir, gene_list)
+            cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
+            run_view_images(
+                data_type, module_3_dir, module_4_dir, gene_list, cluster_name
+            )
 
         # MODULE 5: Spatial Statistics
         if any(m.startswith("5_") for m in modules_to_run):
             logger.info("Running Spatial Statistics...")
             _, module_4_dir = get_module(4)
             module_5_name, module_5_dir = get_module(5)
-            run_spatial_statistics(module_5_dir, module_4_dir)
+            cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
+            run_spatial_statistics(module_5_dir, module_4_dir, cluster_name)
 
         # MODULE 6: MuSpAn
         if any(m.startswith("6_") for m in modules_to_run):
