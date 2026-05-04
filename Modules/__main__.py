@@ -127,15 +127,31 @@ if __name__ == "__main__":
                 dr_settings["cluster_name"],
             )
 
-        # MODULE 3: Annotate
+        # MODULE 3: Annotate (Cell Type Annotation and DE Analysis)
         if any(m.startswith("3_") for m in modules_to_run):
             logger.info("Running Annotate...")
             _, module_2_dir = get_module(2)
             module_3_name, module_3_dir = get_module(3)
             cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
-            new_clusters = settings["modules"]["Annotate"]["new_clusters"]
+            ScType_anno = settings["modules"]["Annotate"]["ScType_anno"]
+            ScType_tissue = settings["modules"]["Annotate"]["ScType_tissue"]
+            ScType_mode = settings["modules"]["Annotate"]["ScType_mode"]
+            ScType_custom_db = settings["modules"]["Annotate"]["ScType_custom_db"]
+            CellTypist_anno = settings["modules"]["Annotate"]["CellTypist_anno"]
+            CellTypist_model = settings["modules"]["Annotate"]["CellTypist_model"]
+            CellTypist_mode = settings["modules"]["Annotate"]["CellTypist_mode"]
             run_annotate(
-                module_3_dir, module_3_name, cluster_name, new_clusters, module_2_dir
+                data_type,
+                module_3_dir,
+                cluster_name,
+                module_2_dir,
+                ScType_anno,
+                ScType_tissue,
+                ScType_custom_db,
+                ScType_mode,
+                CellTypist_anno,
+                CellTypist_model,
+                CellTypist_mode,
             )
 
         # MODULE 4: View Images
@@ -163,6 +179,8 @@ if __name__ == "__main__":
             _, module_5_dir = get_module(5)
             module_6_name, module_6_dir = get_module(6)
             ms_settings = settings["modules"]["MuSpan"]
+            cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
+            cell_types = ms_settings["cell_types"]
 
             if data_type == "CosMx":
                 run_muspan(
@@ -170,7 +188,7 @@ if __name__ == "__main__":
                     module_6_dir,
                     module_5_dir,
                     f"CosMx_FOV_{ms_settings['fov']}",
-                    ms_settings["cluster_labels"],
+                    cluster_name,
                     ms_settings["transcripts"],
                     zarr_path=zarr_path,
                     flat_files_dir=dataset_path,
@@ -182,7 +200,7 @@ if __name__ == "__main__":
                     module_6_dir,
                     module_5_dir,
                     "Xenium_domain",
-                    ms_settings["cluster_labels"],
+                    cluster_name,
                     ms_settings["transcripts"],
                     xenium_dir=dataset_path,
                     area_path=ms_settings["area_path"],
@@ -210,7 +228,7 @@ if __name__ == "__main__":
             )
 
             # Stats
-            run_muspan_stats(module_6_dir, muspan_object, ms_settings["cluster_labels"])
+            run_muspan_stats(module_6_dir, muspan_object, cluster_name, cell_types)
 
         logger.info("Pipeline completed successfully!")
 

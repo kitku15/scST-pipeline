@@ -34,14 +34,21 @@ min_dapi = 100 # Minimum mean DAPI intensity required for a gene to pass filteri
 
 
 [modules.DimensionReduction]
-n_comps = 50  # number of principal components to compute                        
-n_neighbors = [10, 15, 20]  # List of neighbors to test                    
-resolution = [0.5, 0.8, 1.0]  # List of resolutions to test                  
+n_comps = 50  # number of principal components to compute     
+n_pca = 30 # no of PCs for UMAP                   
+n_neighbors = [30, 40, 50]  # List of neighbors to test                    
+resolution = [1.0, 1.5, 2.0]  # List of resolutions to test                  
 cluster_name = "leiden"  # name of the cluster column in adata.obs  
 
 [modules.Annotate]
-chosen_cluster = "leiden_n20_r0.8"  # Put the exact name of the one you liked best
-new_clusters = "cell_type" 
+chosen_cluster = "leiden_n50_r1.5"  # Put the exact name of the one you liked best
+ScType_anno =  true # true / false
+ScType_mode = "one" # All or one (chosen cluster)
+ScType_custom_db = "my_custom_markers.xlsx" # blank string if NOT using custom db
+ScType_tissue = "" # blank string if using custom db
+CellTypist_anno = false # true / false
+CellTypist_mode = "All"
+CellTypist_model = "Mouse_Whole_Brain"
 
 [modules.ViewImages]
 gene_list = [ # List of genes to visualize on tissue
@@ -63,7 +70,6 @@ transcripts = [ # List of genes to visualize on tissue
     "Tcf7l2",
 ]
 
-cluster_labels = "cell_type"
 
 min_edge_distance = 0
 max_edge_distance = 200
@@ -74,3 +80,5 @@ k_list = [2, 5, 10, 15]
 
 # Path to the CSV file containing selected cells statistics (relative to data_dir) for Xenium only?
 area_path = "" 
+
+cell_types = [14, 18]

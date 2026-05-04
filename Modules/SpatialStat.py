@@ -5,7 +5,7 @@ from logging import getLogger
 
 import scanpy as sc
 import squidpy as sq
-from config import get_module
+from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -23,6 +23,28 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     logger.info("Loading data...")
     adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
 
+    # Make sure cluster column is categorical and get the number of unique clusters
+    if adata.obs[cluster_name].dtype.name != "category":
+        adata.obs[cluster_name] = adata.obs[cluster_name].astype("category")
+
+    valid_clusters = list(adata.obs[cluster_name].cat.categories)
+    num_clusters = len(valid_clusters)
+    logger.info(f"Detected {num_clusters} unique clusters. Adjusting plot sizes...")
+
+    # --- DYNAMIC FIGURE SIZE CALCULATIONS ---
+    # Centrality: 3 panels horizontally. Scales width heavily, height slightly.
+    cent_width = max(16.0, num_clusters * 1.5)
+    cent_figsize = (cent_width, max(5.0, num_clusters * 0.3))
+
+    # Co-occurrence: Grid plot or plot with big legend. Scales width and height.
+    co_size = max(10.0, num_clusters * 4)
+    co_figsize = (co_size, 10.0)
+
+    # Neighborhood enrichment: Heatmap. Scales width and height equally.
+    nhood_size = max(8.0, num_clusters * 0.6)
+    nhood_figsize = (nhood_size, nhood_size)
+    # ----------------------------------------
+
     # Calculate spatial statistics
     logger.info("Building spatial neighborhood graph...")
     sq.gr.spatial_neighbors(
@@ -34,7 +56,7 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     sq.pl.centrality_scores(
         adata,
         cluster_key=cluster_name,
-        figsize=(16, 5),
+        figsize=cent_figsize,
         save="centrality_scores.png",
     )
     logger.info(
@@ -54,13 +76,14 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
         cluster_key=cluster_name,
     )
 
-    valid_clusters = list(adata_subsample.obs[cluster_name].cat.categories)
+    # Ensure subsampled data has exact same valid categories for plotting
+    valid_clusters_sub = list(adata_subsample.obs[cluster_name].cat.categories)
 
     sq.pl.co_occurrence(
         adata_subsample,
         cluster_key=cluster_name,
-        clusters=valid_clusters,
-        figsize=(10, 10),
+        clusters=valid_clusters_sub,
+        figsize=co_figsize,
         save="co_occurrence.png",
     )
     logger.info(f"Co-occurrence plot saved to {module_dir / 'co_occurrence.png'}")
@@ -73,8 +96,8 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     sq.pl.nhood_enrichment(
         adata,
         cluster_key=cluster_name,
-        figsize=(8, 8),
-        title="Neighborhood enrichment adata",
+        figsize=nhood_figsize,
+        title="Neighborhood enrichment",
         save="nhood_enrichment.png",
     )
     logger.info(
@@ -109,4 +132,6 @@ if __name__ == "__main__":
     module_4_name, module_4_dir = get_module(4)
     module_5_name, module_5_dir = get_module(5)
 
-    run_spatial_statistics(module_5_dir, module_4_dir)
+    cluster_labels = settings["modules"]["Squidpy"]["cluster_labels"]
+
+    run_spatial_statistics(module_5_dir, module_4_dir, cluster_labels)

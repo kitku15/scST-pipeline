@@ -18,22 +18,18 @@ def calculate_and_plot_cross_pcf(
     cluster_labels,
     module_dir,
     unique_clusters,
-    cell_type_indices=(0, 1),
+    cell_types=("14", "18"),
     max_R=200,
     annulus_step=5,
     annulus_width=25,
     visualise_output=True,
 ):
     """Calculates and plots the cross-PCF for two selected cell types."""
-    cell_type_indices = list(cell_type_indices)
+    cell_type_1, cell_type_2 = str(cell_types[0]), str(cell_types[1])
 
-    logger.info(unique_clusters)
-    try:
-        cell_type_1 = unique_clusters[cell_type_indices[0]]
-        cell_type_2 = unique_clusters[cell_type_indices[1]]
-    except IndexError:
+    if cell_type_1 not in unique_clusters or cell_type_2 not in unique_clusters:
         raise ValueError(
-            "Cell type indices are out of range of the unique cluster list."
+            f"Cell types {cell_type_1} or {cell_type_2} not found in unique clusters."
         )
 
     logger.info(f"Calculating cross-PCF for {cell_type_1} and {cell_type_2}...")
@@ -125,7 +121,7 @@ def calculate_pairwise_cross_pcf(
     logger.info(f"Cross-PCF matrix plot saved at {output_path}")
 
 
-def run_muspan_stats(module_dir, muspan_object, cluster_labels):
+def run_muspan_stats(module_dir, muspan_object, cluster_labels, cell_types):
     """Run Muspan spatial statistics analysis on Xenium data."""
     try:
         import muspan as ms
@@ -155,7 +151,7 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels):
         cluster_labels=cluster_labels,
         module_dir=module_dir,
         unique_clusters=unique_clusters,
-        cell_type_indices=(0, 1),
+        cell_types=cell_types,
     )
 
     # Full pairwise matrix
@@ -181,5 +177,6 @@ if __name__ == "__main__":
     muspan_object = muspan_files[0]  # we only expect one muspan domain file
 
     cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
+    cell_types = settings["modules"]["MuSpan"]["cell_types"]
 
-    run_muspan_stats(module_6_dir, muspan_object, cluster_labels)
+    run_muspan_stats(module_6_dir, muspan_object, cluster_labels, cell_types)

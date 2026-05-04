@@ -5,14 +5,173 @@ from logging import getLogger
 
 import pandas as pd
 import scanpy as sc
+import re
 from config import settings, get_module
+from CellAnnotation_ScType import run_ScType
+from CellAnnotation_CellTypist import run_CellTypist
+from CellAnnotation_plotting import run_CellType_plotting
+from lists import CellTypist_models, ScType_tissuetypes
+from pathlib import Path
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_module_dir):
+def cluster_DE_analysis(adata, cluster_col, module_dir, method=None, celltype_col=None):
+    """
+    cluster_col: the groupings / clustering column that the DE analysis will be based on
+    """
+    if method:
+        output_dir = Path(f"{module_dir}/{method}/{cluster_col}/DE_analysis")
+        sc.settings.figdir = output_dir
+
+    else:
+        output_dir = Path(f"{module_dir}/DE_analysis/{cluster_col}")
+        sc.settings.figdir = output_dir
+        celltype_col = cluster_col
+
+    # Annotate cell clusters
+
+    # Calculate the differentially expressed genes for every cluster,
+    # compared to the rest of the cells in our adata
+    logger.info("Calculating differentially expressed genes for each cluster...")
+    sc.tl.rank_genes_groups(adata, groupby=celltype_col, method="wilcoxon")
+
+    # 1. Plot differentially expressed genes for each cluster
+    logger.info("Plotting the top differentially expressed genes for each cluster...")
+    sc.pl.rank_genes_groups_dotplot(
+        adata,
+        groupby=celltype_col,
+        standard_scale="var",
+        n_genes=5,
+        show=False,
+        save=f"{celltype_col}.png",
+    )
+    logger.info(f"Dotplot saved to {sc.settings.figdir}")
+
+    logger.info("Plot differentially expressed genes for each cluster in elbow plot...")
+    sc.pl.rank_genes_groups(
+        adata,
+        n_genes=10,
+        ncols=3,
+        legend_fontsize=10,
+        show=False,
+        save=f"_{celltype_col}.png",
+    )
+    logger.info(f"DE Analysis plots saved to {sc.settings.figdir}")
+
+    # Make a dataframe of marker expression
+    logger.info("Save files for differentially expressed genes for each cluster...")
+    logger.info("File 1...")
+    markers = sc.get.rank_genes_groups_df(adata, None)
+    markers = markers[(markers["pvals_adj"] < 0.05) & (markers["logfoldchanges"] > 0.5)]
+    markers.to_excel(
+        output_dir / f"markers_{celltype_col}.xlsx",
+        index=False,
+    )
+    logger.info(f"Markers saved to {module_dir}")
+
+    logger.info("File 2...")
+
+    # Define the number of clusters
+    # clusters_list = len(adata.obs[cluster_col].astype(str).unique())
+
+    # Create a list
+    rows_list = []
+    # Get the actual group names from the DE results
+    result_groups = adata.uns["rank_genes_groups"]["names"].dtype.names
+
+    for group in result_groups:
+        top_genes = adata.uns["rank_genes_groups"]["names"][group][:10].tolist()
+        new_row = pd.Series({"Cluster Name": group, "Top Genes": top_genes})
+        rows_list.append(new_row)
+
+    # Convert list of series to DataFrame
+    diff_gene_df = pd.concat(rows_list, axis=1).T
+    diff_gene_df.set_index(diff_gene_df.columns[0], inplace=True)
+    diff_gene_df.to_csv(
+        output_dir / f"top_DEgenes_{celltype_col}.csv",
+        index=True,
+    )
+    logger.info(f"Top differentially expressed genes saved to {module_dir}")
+
+    logger.info("File 3...")
+    # Create a dictionary to store DataFrames for each cluster
+    cluster_dict = {}
+    cluster_path = output_dir / "DEgenes"
+    cluster_path.mkdir(exist_ok=True)
+    for group_name in adata.obs[celltype_col].unique():
+        current_cluster = markers[markers["group"] == str(group_name)].sort_values(
+            by="logfoldchanges", ascending=False
+        )
+        cluster_dict[f"cluster_{group_name}"] = current_cluster
+
+        # Clean the name for the filename (remove spaces/slashes)
+        safe_name = re.sub(r"[^\w\s-]", "", str(group_name)).replace(" ", "_")
+        csv_filename = cluster_path / f"cluster_{safe_name}_data.csv"
+
+        current_cluster.to_csv(csv_filename, index=False)
+        logger.info(f"Exported cluster {group_name} data to {csv_filename}")
+
+    # Rename the clusters only if ScType was falsebcs then cluster names would be integers
+    col = adata.obs[celltype_col]
+    is_integer_clusters = col.astype(str).str.fullmatch(r"\d+").all()
+
+    if is_integer_clusters:
+        logger.info("Integer clusters detected → renaming clusters")
+
+        unique_clusters = col.astype(str).unique()  # Get unique clusters
+
+        cluster_names = {  # Get unique cluster names
+            cluster: f"Cluster_{cluster}" for cluster in unique_clusters
+        }
+
+        new_clusters_col = f"named_{celltype_col}"
+        # Map the cluster names to the new column
+        adata.obs[new_clusters_col] = col.astype(str).map(cluster_names)
+
+    else:
+        logger.info("Non-integer clusters detected → skipping renaming")
+
+
+def mode_all(adata):
+    umap_keys = [k for k in adata.obsm.keys() if "X_umap_n" in k]
+
+    leiden_keys = [k for k in adata.obs.columns if k.startswith("leiden_n")]
+
+    cluster_cols = []
+
+    for umap in umap_keys:
+        match = re.search(r"n\d+", umap)
+        if match:
+            n_part = match.group()
+            for leiden in leiden_keys:
+                if n_part in leiden:
+                    cluster_cols.append((umap, leiden))
+
+    return cluster_cols
+
+
+def run_annotate(
+    datatype,
+    module_dir,
+    cluster_name,
+    prev_module_dir,
+    ScType_anno=False,
+    ScType_tissue=None,
+    ScType_custom_db=None,
+    ScType_mode="All",
+    CellTypist_anno=False,
+    CellTypist_model=None,
+    CellTypist_mode="All",
+):
     """Run annotation."""
+
+    # checks for blank strings from config
+    if ScType_tissue == "":
+        ScType_tissue = None
+    if ScType_custom_db == "":
+        ScType_custom_db = None
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
@@ -24,114 +183,194 @@ def run_annotate(module_dir, module_name, cluster_name, new_clusters, prev_modul
     # Set the directory where to save the ScanPy figures
     sc.settings.figdir = module_dir
 
-    # Annotate cell clusters
-    # Calculate the differentially expressed genes for every cluster,
-    # compared to the rest of the cells in our adata
-    logger.info("Calculating differentially expressed genes for each cluster...")
-    sc.tl.rank_genes_groups(adata, groupby=cluster_name, method="wilcoxon")
+    # user selects to do ScType automatic cell type annotation
+    if ScType_anno:
+        # Informative error message if specified tissue type is not in ScType DB
+        if ScType_tissue not in ScType_tissuetypes and not ScType_custom_db:
+            message = (
+                f"Invalid tissue_type: {ScType_tissue}\n"
+                "Please select one of the following:\n- "
+                + "\n- ".join(ScType_tissuetypes)
+            )
 
-    logger.info("Plotting the top differentially expressed genes for each cluster...")
-    sc.pl.rank_genes_groups_dotplot(
-        adata,
-        groupby=cluster_name,
-        standard_scale="var",
-        n_genes=5,
-        show=False,
-        save=f"{module_name}.png",
-    )
-    logger.info(f"Dotplot saved to {sc.settings.figdir}")
+            logger.error(message)
+            raise ValueError(message)
+        else:  # continue with ScType annotation
+            if ScType_mode == "All":  # Proceed with ScType Annotation for ALL clusters
+                # Build UMAP to leiden clustering tuple
+                cluster_cols = mode_all(adata)
 
-    # Plot differentially expressed genes for each cluster
-    logger.info("Plot differentially expressed genes for each cluster in elbow plot...")
-    sc.pl.rank_genes_groups(
-        adata,
-        n_genes=10,
-        ncols=3,
-        legend_fontsize=10,
-        show=False,
-        save=f"_{module_name}.png",
-    )
-    logger.info(f"UMAP plot saved to {sc.settings.figdir}")
+                # Run ScType automatic annotation
+                for umap_col, cluster_col in cluster_cols:
+                    # 1. Run ScType, make predictions
+                    adata, sctype_column = run_ScType(
+                        adata, cluster_col, ScType_tissue, ScType_custom_db
+                    )
 
-    # Make a dataframe of marker expression
-    logger.info("Save files for differentially expressed genes for each cluster...")
-    logger.info("File 1...")
-    markers = sc.get.rank_genes_groups_df(adata, None)
-    markers = markers[(markers["pvals_adj"] < 0.05) & (markers["logfoldchanges"] > 0.5)]
-    markers.to_excel(
-        module_dir / "markers.xlsx",
-        index=False,
-    )
-    logger.info(f"Markers saved to {module_dir}")
+                    # 2. Cell Type plotting
+                    run_CellType_plotting(
+                        "ScType",
+                        datatype,
+                        module_dir,
+                        adata,
+                        cluster_col,
+                        sctype_column,
+                        umap_col,
+                    )
 
-    logger.info("File 2...")
-    # Define the number of clusters
-    clusters_list = len(adata.obs[cluster_name].astype(str).unique())
+                    # 3. DE analysis
+                    cluster_DE_analysis(
+                        adata,
+                        cluster_col,
+                        module_dir,
+                        method="ScType",
+                        celltype_col=sctype_column,
+                    )
 
-    # Create a list
-    list = []
-    for cluster_number in range(clusters_list):
-        top_genes = adata.uns["rank_genes_groups"]["names"][
-            str(cluster_number)
-        ]  # Get the names of the top differentially expressed genes
-        top_genes = top_genes[:10]  # Get the top 10 genes
-        new_row = pd.Series(
-            {"Cluster Number": cluster_number, "Top Genes": top_genes}
-        )  # Create a new row with the cluster_number and top_genes
-        list.append(new_row)
+            else:  # only do ScType Annotation for one clustering
+                # extract the resolution block
+                parts = cluster_name.split("_")  # ['leiden', 'n10', 'r0.1']
+                n_part = parts[1]  # 'n10'
+                umap_col = f"X_umap_{n_part}"
 
-    # Convert list of series to DataFrame
-    diff_gene_df = pd.concat(list, axis=1).T
-    diff_gene_df.set_index(diff_gene_df.columns[0], inplace=True)
-    diff_gene_df.to_csv(
-        module_dir / "top_differentially_expressed_genes.csv",
-        index=True,
-    )
-    logger.info(f"Top differentially expressed genes saved to {module_dir}")
+                # 1. Run ScType, make predictions
+                adata, sctype_column = run_ScType(
+                    adata, cluster_name, ScType_tissue, ScType_custom_db
+                )
 
-    logger.info("File 3...")
-    # Create a dictionary to store DataFrames for each cluster
-    cluster_dict = {}
-    cluster_path = module_dir / "cluster_diff_genes"
-    cluster_path.mkdir(exist_ok=True)
-    for cluster_number in range(clusters_list):
-        # logger.info(cluster_number)
-        current_cluster = markers[markers["group"] == str(cluster_number)].sort_values(
-            by="logfoldchanges", ascending=False
-        )  # make a dataframe of the current cluster
-        cluster_dict[f"cluster_{cluster_number}"] = (
-            current_cluster  # Store the DataFrame in the dictionary
-        )
-        # Export the DataFrame to a CSV file
-        csv_filename = cluster_path / f"cluster_{cluster_number}_data.csv"
+                # 2. Cell Type plotting
+                run_CellType_plotting(
+                    "ScType",
+                    datatype,
+                    module_dir,
+                    adata,
+                    cluster_name,
+                    sctype_column,
+                    umap_col,
+                )
 
-        current_cluster.to_csv(csv_filename, index=False)
-        logger.info(f"Exported cluster {cluster_number} data to {csv_filename}")
+                # 3. DE analysis
+                cluster_DE_analysis(
+                    adata,
+                    cluster_name,
+                    module_dir,
+                    method="ScType",
+                    celltype_col=sctype_column,
+                )
 
-    # Rename the clusters based on the markers
-    logger.info("Renaming clusters based on markers...")
-    # Get unique clusters
-    unique_clusters = (
-        adata.obs[cluster_name].astype(str).unique()
-    )  # Get unique cluster names
-    cluster_names = {
-        cluster: f"Cluster_{cluster}" for cluster in unique_clusters
-    }  # Create a mapping of cluster names
-    adata.obs[new_clusters] = (
-        adata.obs[cluster_name].astype(str).map(cluster_names)
-    )  # Map the cluster names to the cell_type column
+    if CellTypist_anno:
+        if (
+            CellTypist_model not in CellTypist_models
+        ):  # user selected model thats unavailable
+            message = (
+                f"Invalid model selection: {CellTypist_model}\n"
+                "Please select one of the following:\n- "
+                + "\n- ".join(CellTypist_models)
+            )
 
-    # Save anndata object
+            logger.error(message)
+            raise ValueError(message)
+        else:  # user selects model thats available, continue with CellTypist annotation
+            if (
+                CellTypist_mode == "All"
+            ):  # Proceed with CellTypist Annotation for ALL clusters
+                # Build UMAP to leiden clustering tuple
+                cluster_cols = mode_all(adata)
+
+                # Run ScType automatic annotation
+                for umap_col, cluster_col in cluster_cols:
+                    # 1. Run CellTypist, make predictions
+                    adata, indivcellanno_col, majorvotingcellanno_col = run_CellTypist(
+                        adata, CellTypist_model, cluster_col
+                    )
+
+                    # 2. Cell Type plotting
+                    run_CellType_plotting(
+                        "CellTypist",
+                        datatype,
+                        module_dir,
+                        adata,
+                        cluster_col,
+                        majorvotingcellanno_col,
+                        umap_col,
+                        indivcellanno_col,
+                    )
+
+                    # 3. DE analysis
+                    cluster_DE_analysis(
+                        adata,
+                        cluster_col,
+                        module_dir,
+                        method="CellTypist",
+                        celltype_col=majorvotingcellanno_col,
+                    )
+
+            else:  # only do CellTypist Annotation for one clustering
+                # extract the resolution block
+                parts = cluster_name.split("_")  # ['leiden', 'n10', 'r0.1']
+                n_part = parts[1]  # 'n10'
+                umap_col = f"X_umap_{n_part}"
+
+                # 1. Run CellTypist, make predictions
+                adata, indivcellanno_col, majorvotingcellanno_col = run_CellTypist(
+                    adata, CellTypist_model, cluster_name
+                )
+
+                # 2. Cell Type plotting
+                run_CellType_plotting(
+                    "CellTypist",
+                    datatype,
+                    module_dir,
+                    adata,
+                    cluster_name,
+                    majorvotingcellanno_col,
+                    umap_col,
+                    indivcellanno_col,
+                )
+
+                # 3. DE analysis
+                cluster_DE_analysis(
+                    adata,
+                    cluster_name,
+                    module_dir,
+                    method="CellTypist",
+                    celltype_col=majorvotingcellanno_col,
+                )
+
+    if (
+        ScType_anno == "False" and CellTypist_anno == "False"
+    ):  # (user does not want any Cell Type Annotation)
+        cluster_DE_analysis(adata, cluster_name, module_dir)
+
+    # Save anndata object (at the end)
     adata.write_h5ad(module_dir / "adata.h5ad")
     logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
     logger.info("Annotation module completed successfully.")
 
 
 if __name__ == "__main__":
-    module_2_name, module_2_dir = get_module(2)
+    data_type = settings["project"]["data_type"]
+    _, module_2_dir = get_module(2)
     module_3_name, module_3_dir = get_module(3)
-
     cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
-    new_clusters = settings["modules"]["Annotate"]["new_clusters"]
+    ScType_anno = settings["modules"]["Annotate"]["ScType_anno"]
+    ScType_tissue = settings["modules"]["Annotate"]["tissue_type"]
+    ScType_custom_db = settings["modules"]["Annotate"]["ScType_custom_db"]
+    ScType_mode = settings["modules"]["Annotate"]["ScType_anno_mode"]
+    CellTypist_anno = settings["modules"]["Annotate"]["CellTypist_anno"]
+    CellTypist_model = settings["modules"]["Annotate"]["CellTypist_model"]
+    CellTypist_mode = settings["modules"]["Annotate"]["CellTypist_mode"]
 
-    run_annotate(module_3_dir, module_3_name, cluster_name, new_clusters, module_2_dir)
+    run_annotate(
+        data_type,
+        module_3_dir,
+        cluster_name,
+        module_2_dir,
+        ScType_anno,
+        ScType_tissue,
+        ScType_custom_db,
+        ScType_mode,
+        CellTypist_anno,
+        CellTypist_model,
+        CellTypist_mode,
+    )

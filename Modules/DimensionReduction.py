@@ -87,41 +87,73 @@ def run_dimension_reduction(
         log=True,
         n_pcs=50,
         show=False,
-        save=f"_{module_name}.png",
+        save="PCA.png",
     )
     logger.info(f"PCA Variance plot saved to {sc.settings.figdir}")
 
-    plotted_spatial_resolutions = set()
-
     for n_neighbors in n_neighbors_list:
-        logger.info("Compute neighbors...")
-        sc.pp.neighbors(
-            adata, n_neighbors=n_neighbors, n_pcs=15
-        )  # compute a neighborhood graph
+        logger.info(f"Compute neighbors for n={n_neighbors}...")
 
-        logger.info("Create UMAPs and cluster cells..")
-        sc.tl.umap(adata)  # calculate umap
+        # 1. Create a unique key for this neighbor graph
+        neighbors_key = f"neighbors_n{n_neighbors}"
+        sc.pp.neighbors(
+            adata,
+            n_neighbors=n_neighbors,
+            n_pcs=30,
+            key_added=neighbors_key,  # Save graph to unique key
+        )
+
+        logger.info(f"Create UMAPs and cluster cells for n={n_neighbors}...")
+
+        # Tell UMAP to use the specific neighbors graph
+        sc.tl.umap(adata, neighbors_key=neighbors_key)
+
+        # Scanpy saves the UMAP to 'X_umap' by default.
+        # We must copy it to a unique name so the next loop doesn't overwrite it
+        custom_umap_basis = f"umap_n{n_neighbors}"
+        adata.obsm[f"X_{custom_umap_basis}"] = adata.obsm["X_umap"].copy()
+
         for resolution in resolution_list:
-            # Create a unique name for this specific parameter combination
             current_cluster_name = f"{cluster_name}_n{n_neighbors}_r{resolution}"
+
+            # combination specific subfolder
+            combo_dir = module_dir / f"n{n_neighbors}_r{resolution}"
+            combo_dir.mkdir(parents=True, exist_ok=True)
+
+            # Point Scanpy/Squidpy to save figures in this subfolder
+            sc.settings.figdir = combo_dir
+
+            # Tell Leiden to use the specific neighbors graph
+
+            logger.info(f"Running Leiden clustering for {current_cluster_name}...")
             sc.tl.leiden(
                 adata,
-                resolution=resolution,  # choose resolution for clustering
+                resolution=resolution,
                 key_added=current_cluster_name,
-            )  # name leiden clusters
+                neighbors_key=neighbors_key,  # use correct graph
+            )
 
-            # get number of clusters actually present
             n_clusters = adata.obs[current_cluster_name].nunique()
 
-            # take only as many colors as needed
-            adata.uns[f"{current_cluster_name}_colors"] = cluster_palette_25[
-                :n_clusters
-            ]
+            # handle palettes when there are > 25 clusters
+            if n_clusters <= len(cluster_palette_25):
+                adata.uns[f"{current_cluster_name}_colors"] = cluster_palette_25[
+                    :n_clusters
+                ]
+            else:
+                # Loop the palette so Scanpy doesn't crash from missing colors
+                repeated_palette = cluster_palette_25 * (
+                    (n_clusters // len(cluster_palette_25)) + 1
+                )
+                adata.uns[f"{current_cluster_name}_colors"] = repeated_palette[
+                    :n_clusters
+                ]
 
             # plot UMAP
             logger.info(f"Plotting UMAPs for {current_cluster_name}...")
-            sc.pl.umap(
+            sc.pl.embedding(
                 adata,
+                basis=custom_umap_basis,  # Tell plot to use our uniquely saved UMAP
                 color=[
                     "total_counts",
                     "n_genes_by_counts",
@@ -129,49 +161,28 @@ def run_dimension_reduction(
                 ],
                 wspace=0.4,
                 show=False,
-                save=f"_{current_cluster_name}_{module_name}.png",  # save the figure with the module name
+                save=f"_{current_cluster_name}.png",
                 frameon=False,
             )
-            logger.info(f"UMAP plot saved to {sc.settings.figdir}")
 
-            if resolution not in plotted_spatial_resolutions:
-                # plot visualization of leiden clusters
-                logger.info(f"Plotting {current_cluster_name} clusters...")
-                # Create a plot where each FOV is its own panel
+            logger.info(f"Plotting Spatial Scatter for {current_cluster_name}...")
+            sq.pl.spatial_scatter(
+                adata,
+                color=[current_cluster_name],
+                spatial_key=spatial_key,
+                shape=None,
+                facecolor="white",
+                size=2,
+                frameon=False,
+                img=False,
+                outline=False,
+                figsize=(15, 15),
+                save=f"{current_cluster_name}_spatial.png",
+                dpi=300,
+            )
 
-                sq.pl.spatial_scatter(
-                    adata,
-                    color=[current_cluster_name],
-                    spatial_key=spatial_key,
-                    shape=None,
-                    facecolor="white",
-                    size=2,  # Use a very small size for the full slide
-                    # alpha=0.6,
-                    frameon=False,
-                    img=False,
-                    outline=False,
-                    figsize=(15, 15),
-                    save=f"{resolution}_full_stitched.png",
-                    dpi=300,
-                )
-
-                plotted_spatial_resolutions.add(resolution)
-
-            # if data_type == "CosMx":
-            #     sq.pl.spatial_scatter(
-            #         adata,
-            #         color=[current_cluster_name],
-            #         library_key="fov",  # Use the 'fov' column from your adata.obs
-            #         ncols=4,  # Arrange in 4 columns
-            #         shape=None,  # Circles
-            #         size=1,  # Adjust size if dots are too big/small
-            #         img=False,  # Keep False until we confirm coordinates are right
-            #         outline=False,
-            #         save=f"{current_cluster_name}_by_fov.png",
-            #         dpi=300
-            #     )
-
-            # logger.info(f"{current_cluster_name} spatial scatter plot saved to {module_dir}")
+    # Reset global figdir
+    sc.settings.figdir = module_dir
 
     # Save anndata object
     adata.write_h5ad(module_dir / "adata.h5ad")

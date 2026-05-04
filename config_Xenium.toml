@@ -34,13 +34,22 @@ min_dapi = '' # Minimum mean DAPI intensity required for a gene to pass filterin
 
 
 [modules.DimensionReduction]
-n_comps = 50  # number of principal components to compute                        
+n_comps = 50  # number of principal components to compute         
+n_pca = 30 # no of PCs for UMAP                   
 n_neighbors = [10, 15, 20]  # number of neighbors for the neighborhood graph                    
 resolution = [0.1, 0.3, 0.5]  # resolution for leiden clustering                  
 cluster_name = "leiden"  # name of the cluster column in adata.obs  
 
 [modules.Annotate]
-new_clusters = "cell_type" 
+chosen_cluster = "leiden_n10_r0.1"  # Put the exact name of the one you liked best
+new_clusters = "cell_type"
+ScType_anno =  true 
+ScType_mode = "one" # All or one (chosen cluster)
+ScType_custom_db = "my_custom_markers.xlsx" # blank string if NOT using custom db
+ScType_tissue = "Lung"  # blank string if using custom db
+CellTypist_anno = true
+CellTypist_mode = "one"
+CellTypist_model = "Human_Lung_Atlas"
 
 [modules.ViewImages]
 gene_list = [ # List of genes to visualize on tissue
@@ -62,8 +71,6 @@ transcripts = [ # List of genes to visualize on tissue
     "ACTA2",
 ]
 
-#adata cell id is 'cell_id' in Xenium and 'Cell_ID' in CosMx
-cluster_labels = "cell_type"
 
 min_edge_distance = 0
 max_edge_distance = 45
@@ -75,3 +82,4 @@ k_list = [2, 5, 10, 15]
 # Path to the CSV file containing selected cells statistics (relative to data_dir) for Xenium only?
 area_path = "Xenium_SelectedCells.csv" 
 
+cell_types = [0, 1]
