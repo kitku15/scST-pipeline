@@ -121,7 +121,7 @@ def calculate_pairwise_cross_pcf(
     logger.info(f"Cross-PCF matrix plot saved at {output_path}")
 
 
-def run_muspan_stats(module_dir, muspan_object, cluster_labels, cell_types):
+def run_muspan_stats(module_dir, domain, cluster_labels, cell_types):
     """Run Muspan spatial statistics analysis on Xenium data."""
     try:
         import muspan as ms
@@ -135,8 +135,8 @@ def run_muspan_stats(module_dir, muspan_object, cluster_labels, cell_types):
     module_dir.mkdir(exist_ok=True)
 
     # Load MuSpAn object
-    logger.info("Loading MuSpAn object...")
-    domain = ms.io.load_domain(path_to_domain=str(muspan_object))
+    # logger.info("Loading MuSpAn object...")
+    # domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
     # Get cluster labels
     all_cluster_labels = domain.labels[cluster_labels]["labels"].tolist()

@@ -1,14 +1,21 @@
 # Ignore virtual environments
 .kupavenv/
 
-
 # Ignore local data and analysis outputs (Docker will access these via volume mount instead)
 data/
 analysis_*/
 *.zarr
 *.h5ad
+work/
+results*/
 
 # Ignore git and python cache files
 .git/
+.gitignore
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.ruffle_cache/

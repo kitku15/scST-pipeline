@@ -185,6 +185,10 @@ def plot_spatial_qc(module_dir, adata, cfg):
     sc.settings.figdir = module_dir
 
     logger.info(f"Visualize {str(cfg['nucleus_col'])} on tissue...")
+
+    fig, ax = plt.subplots(figsize=(6, 6), facecolor="white")
+    ax.set_facecolor("white")
+
     sq.pl.spatial_scatter(
         adata,
         spatial_key=cfg["spatial_key"],
@@ -193,11 +197,23 @@ def plot_spatial_qc(module_dir, adata, cfg):
         outline=False,
         wspace=0.4,
         size=1,
-        save=f"{str(cfg['nucleus_col'])}_scatter.png",
         dpi=300,
+        img=False,
+        ax=ax,
     )
 
+    fig.savefig(
+        module_dir / f"{cfg['nucleus_col']}_scatter.png",
+        dpi=300,
+        facecolor="white",
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
     logger.info("Visualize cell area on tissue...")
+    fig, ax = plt.subplots(figsize=(6, 6), facecolor="white")
+    ax.set_facecolor("white")
+
     sq.pl.spatial_scatter(
         adata,
         spatial_key=cfg["spatial_key"],
@@ -206,9 +222,15 @@ def plot_spatial_qc(module_dir, adata, cfg):
         outline=False,
         wspace=0.4,
         size=1,
-        save="Area_scatter.png",
         dpi=300,
+        img=False,
+        ax=ax,
     )
+
+    fig.savefig(
+        module_dir / "Area_scatter.png", dpi=300, facecolor="white", bbox_inches="tight"
+    )
+    plt.close(fig)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ import argparse
 import sys
 import os
 from logging import getLogger
-from pathlib import Path
 
 
 # Parse arguments FIRST so we can set the config environment variable
@@ -39,6 +38,7 @@ if __name__ == "__main__":
     from MuSpan import run_muspan
     from MuSpan_SpatialGraph import run_muspan_graph
     from MuSpan_SpatialStats import run_muspan_stats
+    from SelectionCSV import cosmx_csv, xenium_csv
 
     # Setup Logging
     log_dir = analysis_dir / "logs"
@@ -56,12 +56,6 @@ if __name__ == "__main__":
     dataset_path = settings["io"]["dataset_dir"]
     dataset_id = settings["io"]["dataset_id"]
     zarr_path = settings["io"]["zarr_dir"]
-
-    # print(dataset_path)
-    # cwd = os.getcwd()
-    # print("Current Working Directory:", cwd)
-
-    # exit()
 
     # We determine what to run based on the TOML pipeline.modules list
     if args.modules:
@@ -157,12 +151,25 @@ if __name__ == "__main__":
         # MODULE 4: View Images
         if any(m.startswith("4_") for m in modules_to_run):
             logger.info("Running View Images...")
+            viewimages_set = settings["modules"]["ViewImages"]
+
             _, module_3_dir = get_module(3)
             module_4_name, module_4_dir = get_module(4)
-            gene_list = settings["modules"]["ViewImages"]["gene_list"]
+            gene_list = viewimages_set["gene_list"]
             cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
-            run_view_images(
-                data_type, module_3_dir, module_4_dir, gene_list, cluster_name
+
+            # xenium specific settings for grid generation in view images module
+            n_grid_x = viewimages_set.get("n_grid_x", None)
+            n_grid_y = viewimages_set.get("n_grid_y", None)
+
+            grid_csv_path = run_view_images(
+                data_type,
+                module_3_dir,
+                module_4_dir,
+                gene_list,
+                cluster_name,
+                n_grid_x,
+                n_grid_y,
             )
 
         # MODULE 5: Spatial Statistics
@@ -175,60 +182,92 @@ if __name__ == "__main__":
 
         # MODULE 6: MuSpAn
         if any(m.startswith("6_") for m in modules_to_run):
-            logger.info("Running MuSpAn Domain...")
             _, module_5_dir = get_module(5)
             module_6_name, module_6_dir = get_module(6)
             ms_settings = settings["modules"]["MuSpan"]
             cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
             cell_types = ms_settings["cell_types"]
+            transcript_list = ms_settings["transcripts"]
+
+            selection_name = ms_settings["selection_name"]
+            selected_celltypes = ms_settings["selected_celltypes"]
+
+            # CosMx specific setting to select specific fovs for cell selection
+            selected_fovs = ms_settings.get("selected_fovs", None)
+
+            # Xenium specific setting to zoom into a specific area for cell selection
+            box_ids = ms_settings.get("box_ids", None)
 
             if data_type == "CosMx":
-                run_muspan(
-                    "CosMx",
-                    module_6_dir,
-                    module_5_dir,
-                    f"CosMx_FOV_{ms_settings['fov']}",
-                    cluster_name,
-                    ms_settings["transcripts"],
+                logger.info("Creating Selection CSVs...")
+                cell_selection_csv = cosmx_csv(
+                    module_dir=module_6_dir,
+                    prev_module_dir=module_5_dir,
+                    selection_name=selection_name,
+                    cluster_col=cluster_name,
+                    selected_fovs=selected_fovs,
+                    selected_celltypes=selected_celltypes,
+                )
+
+                logger.info("Running MuSpAn Domain...")
+                domain = run_muspan(
+                    dataset_type=data_type,
+                    module_dir=module_6_dir,
+                    prev_module_dir=module_5_dir,
+                    domain_name=selection_name,
+                    cluster_labels=cluster_name,
+                    transcripts_of_interest=transcript_list,
+                    cell_selection_csv=cell_selection_csv,
                     zarr_path=zarr_path,
                     flat_files_dir=dataset_path,
-                    fov_id=ms_settings["fov"],
                 )
-            else:
-                run_muspan(
-                    "Xenium",
-                    module_6_dir,
-                    module_5_dir,
-                    "Xenium_domain",
-                    cluster_name,
-                    ms_settings["transcripts"],
+            elif data_type == "Xenium":
+                logger.info("Creating Selection CSVs...")
+                # not final yet please fix this path thing
+                _, module_4_dir = get_module(4)
+                grid_csv_path = f"{module_4_dir}/Xenium_ROI_grid_coordinates.csv"
+                cell_selection_csv = xenium_csv(
+                    module_dir=module_6_dir,
+                    prev_module_dir=module_5_dir,
+                    selection_name=selection_name,
+                    genes_of_interest=transcript_list,
+                    cluster_col=cluster_name,
+                    box_ids=box_ids,
+                    grid_csv_path=grid_csv_path,
+                )
+
+                logger.info("Running MuSpAn Domain...")
+                domain = run_muspan(
+                    dataset_type=data_type,
+                    module_dir=module_6_dir,
+                    prev_module_dir=module_5_dir,
+                    domain_name=selection_name,
+                    cluster_labels=cluster_name,
+                    transcripts_of_interest=transcript_list,
+                    cell_selection_csv=cell_selection_csv,
                     xenium_dir=dataset_path,
-                    area_path=ms_settings["area_path"],
-                    adata_cell_id="cell_id",
                 )
 
             logger.info("Running MuSpAn Spatial Graphs & Stats...")
-            muspan_files = list(Path(module_6_dir).glob("*.muspan"))
-            if not muspan_files:
-                raise FileNotFoundError(
-                    "No .muspan file generated. Cannot proceed with stats."
-                )
-            muspan_object = muspan_files[0]
 
             # Graphs
             run_muspan_graph(
-                module_6_dir,
-                muspan_object,
-                ms_settings["min_edge_distance"],
-                ms_settings["max_edge_distance"],
-                ms_settings["distance_list"],
-                ms_settings["min_edge_distance_shape"],
-                ms_settings["max_edge_distance_shape"],
-                ms_settings["k_list"],
+                module_dir=module_6_dir,
+                domain=domain,  # domain passed through immediately
+                min_edge_distance=ms_settings["min_edge_distance"],
+                max_edge_distance=ms_settings["max_edge_distance"],
+                distance_list=ms_settings["distance_list"],
+                min_edge_distance_shape=ms_settings["min_edge_distance_shape"],
+                max_edge_distance_shape=ms_settings["max_edge_distance_shape"],
+                k_list=ms_settings["k_list"],
             )
-
             # Stats
-            run_muspan_stats(module_6_dir, muspan_object, cluster_name, cell_types)
+            run_muspan_stats(
+                module_dir=module_6_dir,
+                domain=domain,  # domain passed through immediately
+                cluster_labels=cluster_name,
+                cell_types=cell_types,
+            )
 
         logger.info("Pipeline completed successfully!")
 

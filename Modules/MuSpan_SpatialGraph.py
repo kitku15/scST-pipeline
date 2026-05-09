@@ -5,7 +5,6 @@ from logging import getLogger
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from pathlib import Path
 from config import settings, get_module
 
 
@@ -21,7 +20,7 @@ except ModuleNotFoundError:
 
 def run_muspan_graph(
     module_dir,
-    muspan_object,
+    domain,
     min_edge_distance,
     max_edge_distance,
     distance_list,
@@ -45,8 +44,8 @@ def run_muspan_graph(
     module_dir.mkdir(exist_ok=True)
 
     # Import data
-    logger.info("Loading MuSpAn object...")
-    domain = ms.io.load_domain(path_to_domain=str(muspan_object))
+    # logger.info("Loading MuSpAn object...")
+    # domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
     # Create delanuay triangulation spatial graph
     logger.info("Creating Delaunay triangulation spatial graph...")
@@ -76,17 +75,17 @@ def run_muspan_graph(
     # Confirm the domain has the expected labels
     logger.info(f"Networks in domain: {domain.networks.keys()}")
 
-    domain_path = Path(muspan_object)
-    domain_name = domain_path.stem
-    domain_dir = domain_path.parent
+    # domain_path = Path(muspan_object)
+    # domain_name = domain_path.stem
+    # domain_dir = domain_path.parent
 
-    # Save domain
-    ms.io.save_domain(
-        domain,
-        name_of_file=str(domain_name),
-        path_to_save=str(domain_dir),
-    )
-    logger.info("Domain saved")
+    # # Save domain
+    # ms.io.save_domain(
+    #     domain,
+    #     name_of_file=str(domain_name),
+    #     path_to_save=str(domain_dir),
+    # )
+    # logger.info("Domain saved")
 
 
 def plot_delaunay_networks(domain, module_dir):

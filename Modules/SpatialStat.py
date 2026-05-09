@@ -3,6 +3,7 @@
 import warnings
 from logging import getLogger
 
+import matplotlib.pyplot as plt
 import scanpy as sc
 import squidpy as sq
 from config import settings, get_module
@@ -16,8 +17,6 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
-
-    sc.settings.figdir = module_dir  # set the figures dir to not be figures
 
     # Import data
     logger.info("Loading data...")
@@ -43,7 +42,6 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     # Neighborhood enrichment: Heatmap. Scales width and height equally.
     nhood_size = max(8.0, num_clusters * 0.6)
     nhood_figsize = (nhood_size, nhood_size)
-    # ----------------------------------------
 
     # Calculate spatial statistics
     logger.info("Building spatial neighborhood graph...")
@@ -53,12 +51,23 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
 
     logger.info("Computing and plotting centrality scores...")
     sq.gr.centrality_scores(adata, cluster_key=cluster_name)
-    sq.pl.centrality_scores(
-        adata,
-        cluster_key=cluster_name,
-        figsize=cent_figsize,
-        save="centrality_scores.png",
-    )
+
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        sq.pl.centrality_scores(
+            adata,
+            cluster_key=cluster_name,
+            figsize=cent_figsize,
+        )
+
+        fig = plt.gcf()
+        fig.savefig(
+            module_dir / "centrality_scores.png",
+            dpi=300,
+            facecolor="white",
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
     logger.info(
         f"Centrality scores plot saved to {module_dir / 'centrality_scores.png'}"
     )
@@ -79,13 +88,23 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     # Ensure subsampled data has exact same valid categories for plotting
     valid_clusters_sub = list(adata_subsample.obs[cluster_name].cat.categories)
 
-    sq.pl.co_occurrence(
-        adata_subsample,
-        cluster_key=cluster_name,
-        clusters=valid_clusters_sub,
-        figsize=co_figsize,
-        save="co_occurrence.png",
-    )
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        sq.pl.co_occurrence(
+            adata_subsample,
+            cluster_key=cluster_name,
+            clusters=valid_clusters_sub,
+            figsize=co_figsize,
+        )
+
+        fig = plt.gcf()
+        fig.savefig(
+            module_dir / "co_occurrence.png",
+            dpi=300,
+            facecolor="white",
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
     logger.info(f"Co-occurrence plot saved to {module_dir / 'co_occurrence.png'}")
 
     # Neighborhood enrichment analysis
@@ -93,13 +112,24 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     sq.gr.nhood_enrichment(adata, cluster_key=cluster_name)
 
     # Plot neighborhood enrichment
-    sq.pl.nhood_enrichment(
-        adata,
-        cluster_key=cluster_name,
-        figsize=nhood_figsize,
-        title="Neighborhood enrichment",
-        save="nhood_enrichment.png",
-    )
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        fig, ax = plt.subplots(1, 1, figsize=nhood_figsize, facecolor="white")
+
+        sq.pl.nhood_enrichment(
+            adata,
+            cluster_key=cluster_name,
+            title="Neighborhood enrichment",
+            ax=ax,
+        )
+
+        fig.savefig(
+            module_dir / "nhood_enrichment.png",
+            dpi=300,
+            facecolor="white",
+            bbox_inches="tight",
+        )
+        plt.close(fig)
+
     logger.info(
         f"Neighborhood enrichment plot saved to {module_dir / 'nhood_enrichment.png'}"
     )

@@ -36,17 +36,19 @@ min_dapi = 100 # Minimum mean DAPI intensity required for a gene to pass filteri
 [modules.DimensionReduction]
 n_comps = 50  # number of principal components to compute     
 n_pca = 30 # no of PCs for UMAP                   
-n_neighbors = [30, 40, 50]  # List of neighbors to test                    
-resolution = [1.0, 1.5, 2.0]  # List of resolutions to test                  
+n_neighbors = [30, 50]  # List of neighbors to test                    
+resolution = [1.0, 2.0]  # List of resolutions to test                  
 cluster_name = "leiden"  # name of the cluster column in adata.obs  
 
 [modules.Annotate]
-chosen_cluster = "leiden_n50_r1.5"  # Put the exact name of the one you liked best
+chosen_cluster = "leiden_n50_r1.0"  # Put the exact name of the one you liked best
+
 ScType_anno =  true # true / false
-ScType_mode = "one" # All or one (chosen cluster)
-ScType_custom_db = "my_custom_markers.xlsx" # blank string if NOT using custom db
-ScType_tissue = "" # blank string if using custom db
-CellTypist_anno = false # true / false
+ScType_mode = "All" # All or one (chosen cluster)
+ScType_custom_db = "" # blank string if NOT using custom db
+ScType_tissue = "Brain" # blank string if using custom db
+
+CellTypist_anno = true # true / false
 CellTypist_mode = "All"
 CellTypist_model = "Mouse_Whole_Brain"
 
@@ -60,8 +62,6 @@ gene_list = [ # List of genes to visualize on tissue
 ]
 
 [modules.MuSpan]
-fov = "32" 
-
 transcripts = [ # List of genes to visualize on tissue
     "Nrgn",
     "Plp1",
@@ -78,7 +78,10 @@ min_edge_distance_shape = 0
 max_edge_distance_shape = 1
 k_list = [2, 5, 10, 15]
 
-# Path to the CSV file containing selected cells statistics (relative to data_dir) for Xenium only?
-area_path = "" 
 
+
+# For cosmx custom cell selection 
+selection_name = "phageku"
+selected_fovs = ["33", "32", "28", "29"]
+selected_celltypes = ["10", "14", "5", "18"]
 cell_types = [14, 18]

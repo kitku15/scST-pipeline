@@ -7,6 +7,7 @@ import scanpy as sc
 import squidpy as sq
 from config import settings, get_module
 import matplotlib
+import matplotlib.pyplot as plt
 
 matplotlib.use("Agg")
 
@@ -166,6 +167,9 @@ def run_dimension_reduction(
             )
 
             logger.info(f"Plotting Spatial Scatter for {current_cluster_name}...")
+            fig, ax = plt.subplots(figsize=(15, 15), facecolor="white")
+            ax.set_facecolor("white")
+
             sq.pl.spatial_scatter(
                 adata,
                 color=[current_cluster_name],
@@ -175,11 +179,18 @@ def run_dimension_reduction(
                 size=2,
                 frameon=False,
                 img=False,
+                ax=ax,
                 outline=False,
-                figsize=(15, 15),
-                save=f"{current_cluster_name}_spatial.png",
                 dpi=300,
             )
+
+            fig.savefig(
+                combo_dir / f"{current_cluster_name}_spatial.png",
+                dpi=300,
+                facecolor="white",
+                bbox_inches="tight",
+            )
+            plt.close(fig)
 
     # Reset global figdir
     sc.settings.figdir = module_dir

@@ -1,7 +1,7 @@
 # Use a standard Python image
 FROM python:3.11-slim
 
-# Install system dependencies required by spatial libraries (e.g. OpenCV, gcc)
+# Install system dependencies required by spatial libraries 
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgl1 \
@@ -33,5 +33,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # The default command will run the pipeline. 
-ENTRYPOINT ["python", "modules/__main__.py"]
+ENTRYPOINT ["python", "Modules/__main__.py"]
 CMD ["config_CosMx.toml"]
