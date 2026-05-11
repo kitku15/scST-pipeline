@@ -6,7 +6,6 @@ from logging import getLogger
 import matplotlib.pyplot as plt
 import scanpy as sc
 import squidpy as sq
-from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -30,7 +29,7 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     num_clusters = len(valid_clusters)
     logger.info(f"Detected {num_clusters} unique clusters. Adjusting plot sizes...")
 
-    # --- DYNAMIC FIGURE SIZE CALCULATIONS ---
+    # Dynamic fig size
     # Centrality: 3 panels horizontally. Scales width heavily, height slightly.
     cent_width = max(16.0, num_clusters * 1.5)
     cent_figsize = (cent_width, max(5.0, num_clusters * 0.3))
@@ -81,8 +80,7 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
 
     # Visualize co-occurrence
     sq.gr.co_occurrence(
-        adata_subsample,
-        cluster_key=cluster_name,
+        adata_subsample, cluster_key=cluster_name, n_jobs=16, backend="loky"
     )
 
     # Ensure subsampled data has exact same valid categories for plotting
@@ -156,12 +154,3 @@ def run_spatial_statistics(module_dir, prev_module_dir, cluster_name):
     adata.write_h5ad(module_dir / "adata.h5ad")
     logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
     logger.info("Spatial statistics module completed successfully.")
-
-
-if __name__ == "__main__":
-    module_4_name, module_4_dir = get_module(4)
-    module_5_name, module_5_dir = get_module(5)
-
-    cluster_labels = settings["modules"]["Squidpy"]["cluster_labels"]
-
-    run_spatial_statistics(module_5_dir, module_4_dir, cluster_labels)

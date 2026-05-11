@@ -1,0 +1,81 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=16:mem=128gb
+#PBS -l walltime=72:00:00
+#PBS -N ST_pipeline
+#PBS -j oe
+
+set -euo pipefail
+
+cd "$PBS_O_WORKDIR"
+
+#########################################
+##                                     ##
+## Output some useful job information. ##
+##                                     ##
+#########################################
+
+echo ------------------------------------------------------
+echo -n 'Job is running on node '; cat $PBS_NODEFILE
+echo ------------------------------------------------------
+echo PBS: qsub is running on $PBS_O_HOST
+echo PBS: originating queue is $PBS_O_QUEUE
+echo PBS: executing queue is $PBS_QUEUE
+echo PBS: working directory is $PBS_O_WORKDIR
+echo PBS: execution mode is $PBS_ENVIRONMENT
+echo PBS: job identifier is $PBS_JOBID
+echo PBS: job name is $PBS_JOBNAME
+echo PBS: job number is $JOBNUM
+echo PBS: logfile is $LOGFILE
+echo PBS: node file is $PBS_NODEFILE
+echo PBS: current home directory is $PBS_O_HOME
+echo ------------------------------------------------------
+
+# Apptainer scratch locations (avoid shared /tmp and home on HPC).
+APPTAINER_TMPDIR_DEFAULT="$PBS_O_WORKDIR/tmp/apptainer-tmp"
+APPTAINER_WORKDIR_DEFAULT="$PBS_O_WORKDIR/tmp/apptainer-work"
+export APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-$APPTAINER_TMPDIR_DEFAULT}"
+export APPTAINER_WORKDIR="${APPTAINER_WORKDIR:-$APPTAINER_WORKDIR_DEFAULT}"
+mkdir -p "$APPTAINER_TMPDIR" "$APPTAINER_WORKDIR"
+
+# Cleanup: these directories are only needed while the container runs.
+# Set KEEP_APPTAINER_TMP=1 to keep them for debugging.
+KEEP_APPTAINER_TMP="${KEEP_APPTAINER_TMP:-0}"
+cleanup_apptainer_tmp() {
+  [[ "$KEEP_APPTAINER_TMP" == "1" ]] && return 0
+
+  # Safety: only delete job-local dirs under $PBS_O_WORKDIR/tmp
+  local base
+  base="$(readlink -f "$PBS_O_WORKDIR/tmp" 2>/dev/null || true)"
+  [[ -n "$base" && -d "$base" ]] || return 0
+
+  local tmpdir workdir
+  tmpdir="$(readlink -f "$APPTAINER_TMPDIR" 2>/dev/null || true)"
+  workdir="$(readlink -f "$APPTAINER_WORKDIR" 2>/dev/null || true)"
+
+  case "$tmpdir" in
+    "$base"/*) rm -rf --one-file-system "$tmpdir" || true ;;
+  esac
+  case "$workdir" in
+    "$base"/*) rm -rf --one-file-system "$workdir" || true ;;
+  esac
+}
+trap cleanup_apptainer_tmp EXIT
+
+CONFIG_NAME="config_Xenium.toml" # set config file here
+CONFIG_FILE="$(readlink -f "$CONFIG_NAME")" 
+SIF_IMAGE="$(readlink -f kitku.sif)" # set SIF image here
+
+[[ -f "$SIF_IMAGE" ]] || { echo "Missing SIF image: $SIF_IMAGE" >&2; exit 1; }
+[[ -f "$CONFIG_FILE" ]] || { echo "Missing config: $CONFIG_FILE" >&2; exit 1; }
+
+echo "Running Spatial Pipeline in Apptainer" >&2
+echo "  Config : $CONFIG_FILE" >&2
+echo "  Image  : $SIF_IMAGE" >&2
+
+apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
+  # currently all input and output are in $PBS_O_WORKDIR, so bind it to /app in the container
+  --bind "$PBS_O_WORKDIR:/app" \
+  "$SIF_IMAGE" \
+  "$CONFIG_NAME" # could add --modules if only want to run specific modules
+
+echo "Pipeline finished successfully!" >&2

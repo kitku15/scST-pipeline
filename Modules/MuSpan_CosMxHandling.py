@@ -1,4 +1,5 @@
 """MuSpan CosMx handling module."""
+# needs to be reviewed in detail
 
 import warnings
 import logging
@@ -42,7 +43,7 @@ def CosMx_to_domain(
     df_sel["fov"] = df_sel["fov"].astype(str)
     df_sel["cluster_name"] = df_sel["cluster_name"].astype(str)
 
-    # authoritative mapping: (fov, local_cell_id) -> cluster
+    # mapping: (fov, local_cell_id) -> cluster
     cell_id_to_type = {
         (fov, cell): cluster
         for fov, cell, cluster in zip(
@@ -69,17 +70,14 @@ def CosMx_to_domain(
     if not fov_list:
         raise ValueError("No FOV provided via fov_id or CSV.")
 
-    # --- DATA ACCUMULATORS ---
     all_trans_coords, all_trans_targets = [], []
     all_cell_coords, all_cell_ids, all_cell_types = [], [], []
     all_geometries, all_boundary_types = [], []
 
-    # --- MULTI-FOV LOOP ---
     for current_fov in fov_list:
         logger.info(f"--- Processing FOV {current_fov} ---")
         local_selected_cells = selected_cells_by_fov.get(current_fov, None)
 
-        # 1. Process Transcripts and compute true Ground-Truth Centers
         points_key = f"{current_fov}_points"
         if points_key not in sdata.points:
             continue
@@ -103,7 +101,6 @@ def CosMx_to_domain(
             all_trans_coords.append(df_pts_plot[["x_global_px", "y_global_px"]].values)
             all_trans_targets.append(df_pts_plot["target"].astype(str).values)
 
-        # Extract Anchor Centers matching transcripts perfectly (using local IDs)
         if "cell_ID" in df_all_pts.columns and "x_global_px" in df_all_pts.columns:
             valid_pts = df_all_pts[df_all_pts["cell_ID"].astype(str) != "0"].copy()
             valid_pts["cell_ID_str"] = (
@@ -115,7 +112,6 @@ def CosMx_to_domain(
         else:
             global_centers = pd.DataFrame()
 
-        # 2. Get valid local cells from SpatialData Table
         sdata_table = sdata.tables["table"]
         mask = sdata_table.obs["fov"].astype(str) == str(current_fov)
         adata_fov = sdata_table[mask]
@@ -123,12 +119,10 @@ def CosMx_to_domain(
         if adata_fov.n_obs == 0:
             continue
 
-        # SIMPLE FIX: Just get a set of valid local IDs for this FOV
         valid_local_ids = set(
             adata_fov.obs["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
         )
 
-        # 3. Trace Polygons and Auto-Align
         padded_fov = f"F{int(current_fov):03d}"
         label_dir = Path(flat_files_dir) / "CellLabels"
         mask_files = list(label_dir.glob(f"*{padded_fov}*.tif")) + list(
@@ -140,7 +134,6 @@ def CosMx_to_domain(
                 "Extracting boundaries and auto-aligning to global coordinate space..."
             )
 
-            # Changed cache name to avoid KeyErrors with old global ID caches
             cache_file = out_dir / f"fov_{current_fov}_geometry_local_cache.pkl"
 
             if cache_file.exists():
@@ -285,7 +278,6 @@ def CosMx_to_domain(
                     all_cell_types.extend(current_fov_types)
                     all_boundary_types.extend(current_fov_types)
 
-    # --- ADD ALL TO MUSPAN DOMAIN ---
     logger.info("Adding collected objects to MuSpAn domain...")
     qTrans, qCells, qBoundaries = None, None, None
 

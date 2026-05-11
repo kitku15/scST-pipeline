@@ -8,7 +8,6 @@ import matplotlib.patches as patches
 import pandas as pd
 import scanpy as sc
 import squidpy as sq
-from config import settings, get_module
 import math
 
 warnings.filterwarnings("ignore")
@@ -292,13 +291,3 @@ def run_view_images(
     logger.info("Imaging module completed successfully.")
 
     return grid_csv_path
-
-
-if __name__ == "__main__":
-    data_type = settings["project"]["data_type"]
-    module_3_name, module_3_dir = get_module(3)
-    module_4_name, module_4_dir = get_module(4)
-    gene_list = settings["modules"]["ViewImages"]["gene_list"]
-    cluster_name = settings["modules"]["ViewImages"].get("cluster_name", "leiden")
-
-    run_view_images(data_type, module_3_dir, module_4_dir, gene_list, cluster_name)

@@ -274,7 +274,7 @@ def plot_umapspatialscatter(adata, spatial_key, celltype_col, umap_col, output_p
     plt.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
 
-    print(f"🎉 Saved combined plot to: {output_path}")
+    print(f"Saved combined plot to: {output_path}")
 
 
 def run_CellType_plotting(

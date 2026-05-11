@@ -6,7 +6,6 @@ from logging import getLogger
 from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
-from config import settings, get_module
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -163,20 +162,3 @@ def run_muspan_stats(module_dir, domain, cluster_labels, cell_types):
         cluster_labels=cluster_labels,
         unique_clusters=unique_clusters,
     )
-
-
-if __name__ == "__main__":
-    module_6_name, module_6_dir = get_module(6)
-
-    fov = settings["modules"]["MuSpan"]["fov"]
-    muspan_files = list(module_6_dir.glob("*.muspan"))
-
-    if not muspan_files:
-        raise FileNotFoundError("No .muspan file found")
-
-    muspan_object = muspan_files[0]  # we only expect one muspan domain file
-
-    cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
-    cell_types = settings["modules"]["MuSpan"]["cell_types"]
-
-    run_muspan_stats(module_6_dir, muspan_object, cluster_labels, cell_types)

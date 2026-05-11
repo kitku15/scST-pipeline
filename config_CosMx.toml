@@ -4,16 +4,14 @@ log_level = "INFO" # Define the logging level here. Options are: DEBUG, INFO, WA
 seed = 21122023    # Random seed for reproducibility
 
 [project]
-analysis_name = "Kitam"
-data_type = "CosMx"
+analysis_name = "Kitam" # sets the name of your analysis folder
+data_type = "CosMx" # Xenium or CosMx
 
 [io]
 base_dir = "."                         # Base directory for the project (relative to the current working directory)
-dataset_id = "Quarter"                # Directory where the input data is stored (relative to base_dir) (CosMx)
-output_dir = "analysis"                # Directory where the output will be saved (relative to base_dir)
+dataset_id = "Quarter"               # specific to cosmx
 dataset_dir = "data/Kitam"                  # Directory containing dataset (Xenium / CosMx) (relative to data_dir)
 zarr_dir = "data/Kitam.zarr"               # Directory where Zarr data will be stored (relative to data_dir)
-area_path = "selected_cells_stats.csv" # Path to the CSV file containing selected cells statistics (relative to data_dir) # only for Xenium?
 logging_path = "logs"                  # Directory where logs will be saved (relative to output_dir)
 
 [pipeline]
@@ -45,11 +43,11 @@ chosen_cluster = "leiden_n50_r1.0"  # Put the exact name of the one you liked be
 
 ScType_anno =  true # true / false
 ScType_mode = "All" # All or one (chosen cluster)
-ScType_custom_db = "" # blank string if NOT using custom db
-ScType_tissue = "Brain" # blank string if using custom db
+ScType_custom_db = "" # use when using custom marker list
+ScType_tissue = "Brain" # remove if using custom marker list
 
 CellTypist_anno = true # true / false
-CellTypist_mode = "All"
+CellTypist_mode = "All" # All or one (chosen cluster)
 CellTypist_model = "Mouse_Whole_Brain"
 
 [modules.ViewImages]
@@ -73,15 +71,14 @@ transcripts = [ # List of genes to visualize on tissue
 
 min_edge_distance = 0
 max_edge_distance = 200
-distance_list = [50, 90, 120] # distance for proximity networks is larger
+distance_list = [50, 90, 120]
 min_edge_distance_shape = 0
 max_edge_distance_shape = 1
 k_list = [2, 5, 10, 15]
 
 
-
 # For cosmx custom cell selection 
-selection_name = "phageku"
-selected_fovs = ["33", "32", "28", "29"]
-selected_celltypes = ["10", "14", "5", "18"]
-cell_types = [14, 18]
+selection_name = "phageku" # the selection csv will be named this
+selected_celltypes = ["10", "14", "5", "18"] # selected clusters (based on chosen cluster) to visualize in MuSpan
+selected_fovs = ["33", "32", "28", "29"] # selected boxes (based ROI plot from View Images module) to visualize in MuSpan
+cell_types = [14, 18] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes

@@ -10,14 +10,11 @@ def run_CellTypist(adata, model_name, cluster_col):
     # restore raw counts
     adata_ct.X = adata.layers["counts"].copy()
 
-    # normalize to 10k (IMPORTANT)
+    # normalize to 10k
     sc.pp.normalize_total(adata_ct, target_sum=1e4)
 
     # log transform
     sc.pp.log1p(adata_ct)
-
-    # check
-    # print(np.expm1(adata_ct.X).sum(axis=1)[:10])
 
     # Enabling `force_update = True` will overwrite existing (old) models.
     models.download_models(force_update=False)
@@ -44,26 +41,3 @@ def run_CellTypist(adata, model_name, cluster_col):
     adata.obs[majorvotingcellanno_col] = adata_pred.obs["majority_voting"]
 
     return adata, indivcellanno_col, majorvotingcellanno_col
-
-
-if __name__ == "__main__":
-    # Load adata
-    adata_path = "../CosMx/Spatial-Transcriptomics-CosMx-Xenium/analysis_Kitam/2_DimensionReduction/adata.h5ad"
-    adata = sc.read_h5ad(adata_path)
-
-    cluster_col = "leiden_n50_r2.0"
-    model_name = "Mouse_Whole_Brain"
-
-    # adata_path = '../CosMx/Spatial-Transcriptomics-CosMx-Xenium/analysis_Tisku/2_DimensionReduction/adata.h5ad'
-    # adata = sc.read_h5ad(adata_path)
-
-    # cluster_col = 'leiden_n10_r0.3'
-    # model_name = 'Human_Lung_Atlas'
-
-    min_frac_threshold = 0.05
-    color_by_col = "majority_voting"
-
-    # Run cell type prediction
-    adata, indivcellanno_col, majorvotingcellanno_col = run_CellTypist(
-        adata, model_name, cluster_col
-    )

@@ -5,7 +5,6 @@ from logging import getLogger
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from config import settings, get_module
 
 
 warnings.filterwarnings("ignore")
@@ -42,10 +41,6 @@ def run_muspan_graph(
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
-
-    # Import data
-    # logger.info("Loading MuSpAn object...")
-    # domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
     # Create delanuay triangulation spatial graph
     logger.info("Creating Delaunay triangulation spatial graph...")
@@ -408,35 +403,3 @@ def plot_proximity_networks(domain, module_dir, color_map, distance_list):
     plt.tight_layout()
     plt.savefig(module_dir / "muspan_proximity_point.png")
     logger.info("Proximity networks (point-like objects) plotted and saved")
-
-
-if __name__ == "__main__":
-    module_6_name, module_6_dir = get_module(6)
-
-    fov = settings["modules"]["MuSpan"]["fov"]
-    muspan_files = list(module_6_dir.glob("*.muspan"))
-
-    if not muspan_files:
-        raise FileNotFoundError("No .muspan file found")
-
-    muspan_object = muspan_files[0]  # we only expect one muspan domain file
-
-    cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
-
-    min_edge_distance = settings["modules"]["MuSpan"]["min_edge_distance"]
-    max_edge_distance = settings["modules"]["MuSpan"]["max_edge_distance"]
-    distance_list = settings["modules"]["MuSpan"]["distance_list"]
-    min_edge_distance_shape = settings["modules"]["MuSpan"]["min_edge_distance_shape"]
-    max_edge_distance_shape = settings["modules"]["MuSpan"]["max_edge_distance_shape"]
-    k_list = settings["modules"]["MuSpan"]["k_list"]
-
-    run_muspan_graph(
-        module_6_dir,
-        muspan_object,
-        min_edge_distance,
-        max_edge_distance,
-        distance_list,
-        min_edge_distance_shape,
-        max_edge_distance_shape,
-        k_list,
-    )

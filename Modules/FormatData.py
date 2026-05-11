@@ -5,7 +5,6 @@ from logging import getLogger
 
 from spatialdata_io import cosmx, xenium
 from pathlib import Path
-from config import settings
 import os
 import gc
 
@@ -55,12 +54,3 @@ def convert_to_zarr(
     except ValueError as err:
         logger.info(f"Failed writing to Zarr: {err}")
         raise err
-
-
-if __name__ == "__main__":
-    dataset_path = settings["io"]["dataset_dir"]
-    dataset_id = settings["io"]["dataset_id"]
-    zarr_path = settings["io"]["zarr_dir"]
-    data_type = settings["project"]["data_type"]
-
-    convert_to_zarr(data_type, dataset_path, dataset_id, zarr_path)

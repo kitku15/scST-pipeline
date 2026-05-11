@@ -5,7 +5,6 @@ from logging import getLogger
 
 import scanpy as sc
 import squidpy as sq
-from config import settings, get_module
 import matplotlib
 import matplotlib.pyplot as plt
 
@@ -110,7 +109,7 @@ def run_dimension_reduction(
         sc.tl.umap(adata, neighbors_key=neighbors_key)
 
         # Scanpy saves the UMAP to 'X_umap' by default.
-        # We must copy it to a unique name so the next loop doesn't overwrite it
+        # We copy it to a unique name so the next loop doesn't overwrite it
         custom_umap_basis = f"umap_n{n_neighbors}"
         adata.obsm[f"X_{custom_umap_basis}"] = adata.obsm["X_umap"].copy()
 
@@ -131,7 +130,8 @@ def run_dimension_reduction(
                 adata,
                 resolution=resolution,
                 key_added=current_cluster_name,
-                neighbors_key=neighbors_key,  # use correct graph
+                neighbors_key=neighbors_key,
+                flavor="igraph",
             )
 
             n_clusters = adata.obs[current_cluster_name].nunique()
@@ -198,26 +198,3 @@ def run_dimension_reduction(
     # Save anndata object
     adata.write_h5ad(module_dir / "adata.h5ad")
     logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
-
-
-if __name__ == "__main__":
-    data_type = settings["project"]["data_type"]
-
-    module_1_name, module_1_dir = get_module(1)
-    module_2_name, module_2_dir = get_module(2)
-
-    n_comps = settings["modules"]["DimensionReduction"]["n_comps"]
-    n_neighbors = settings["modules"]["DimensionReduction"]["n_neighbors"]
-    resolution = settings["modules"]["DimensionReduction"]["resolution"]
-    cluster_name = settings["modules"]["DimensionReduction"]["cluster_name"]
-
-    run_dimension_reduction(
-        data_type,
-        module_1_dir,
-        module_2_dir,
-        module_2_name,
-        n_comps,
-        n_neighbors,
-        resolution,
-        cluster_name,
-    )

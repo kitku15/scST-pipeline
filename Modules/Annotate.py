@@ -6,7 +6,6 @@ from logging import getLogger
 import pandas as pd
 import scanpy as sc
 import re
-from config import settings, get_module
 from CellAnnotation_ScType import run_ScType
 from CellAnnotation_CellTypist import run_CellTypist
 from CellAnnotation_plotting import run_CellType_plotting
@@ -166,12 +165,6 @@ def run_annotate(
     CellTypist_mode="All",
 ):
     """Run annotation."""
-
-    # checks for blank strings from config
-    if ScType_tissue == "":
-        ScType_tissue = None
-    if ScType_custom_db == "":
-        ScType_custom_db = None
 
     # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
@@ -346,31 +339,3 @@ def run_annotate(
     adata.write_h5ad(module_dir / "adata.h5ad")
     logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
     logger.info("Annotation module completed successfully.")
-
-
-if __name__ == "__main__":
-    data_type = settings["project"]["data_type"]
-    _, module_2_dir = get_module(2)
-    module_3_name, module_3_dir = get_module(3)
-    cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
-    ScType_anno = settings["modules"]["Annotate"]["ScType_anno"]
-    ScType_tissue = settings["modules"]["Annotate"]["tissue_type"]
-    ScType_custom_db = settings["modules"]["Annotate"]["ScType_custom_db"]
-    ScType_mode = settings["modules"]["Annotate"]["ScType_anno_mode"]
-    CellTypist_anno = settings["modules"]["Annotate"]["CellTypist_anno"]
-    CellTypist_model = settings["modules"]["Annotate"]["CellTypist_model"]
-    CellTypist_mode = settings["modules"]["Annotate"]["CellTypist_mode"]
-
-    run_annotate(
-        data_type,
-        module_3_dir,
-        cluster_name,
-        module_2_dir,
-        ScType_anno,
-        ScType_tissue,
-        ScType_custom_db,
-        ScType_mode,
-        CellTypist_anno,
-        CellTypist_model,
-        CellTypist_mode,
-    )

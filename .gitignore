@@ -11,3 +11,8 @@ Xenium_SelectedCells.csv
 results/
 ignore/
 work/
+*.tar.gz
+*.tar
+*.sif
+example.pbs
+*.o*

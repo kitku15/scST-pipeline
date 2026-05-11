@@ -7,7 +7,6 @@ from pathlib import Path
 import scanpy as sc
 
 import spatialdata as sd
-from config import settings, get_module
 from MuSpan_CosMxHandling import CosMx_to_domain, cosmx_initial_plotting
 from MuSpan_XeniumHandling import xenium_initial_plotting
 
@@ -103,44 +102,3 @@ def run_muspan(
     # =======================================================
 
     return domain
-
-
-if __name__ == "__main__":
-    data_type = settings["project"]["data_type"]
-
-    module_5_name, module_5_dir = get_module(5)
-    module_6_name, module_6_dir = get_module(6)
-
-    zarr_path = settings["io"]["zarr_dir"]
-    dataset_path = settings["io"]["dataset_dir"]
-
-    fov = settings["modules"]["MuSpan"]["fov"]
-    transcripts = settings["modules"]["MuSpan"]["transcripts"]
-    muspan_object = f"muspan_object_fov_{fov}.muspan"
-    cluster_labels = settings["modules"]["MuSpan"]["cluster_labels"]
-    cell_selection_csv = settings["modules"]["MuSpan"]["cell_selection_csv"]
-
-    if data_type == "CosMx":
-        run_muspan(
-            dataset_type=data_type,
-            module_dir=module_6_dir,
-            prev_module_dir=module_5_dir,
-            domain_name=f"{data_type}_FOV_{fov}",
-            cluster_labels=cluster_labels,
-            transcripts_of_interest=transcripts,
-            cell_selection_csv=cell_selection_csv,
-            zarr_path=zarr_path,
-            flat_files_dir=dataset_path,
-            fov_id=fov,
-        )
-    elif data_type == "Xenium":
-        run_muspan(
-            dataset_type=data_type,
-            module_dir=module_6_dir,
-            prev_module_dir=module_5_dir,
-            domain_name=f"{data_type}_domain",
-            cluster_labels=cluster_labels,
-            transcripts_of_interest=transcripts,
-            cell_selection_csv=cell_selection_csv,
-            xenium_dir=dataset_path,
-        )

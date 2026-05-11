@@ -6,7 +6,6 @@ import warnings
 import logging
 from logging import getLogger
 import scanpy as sc
-from config import settings, get_module
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -201,43 +200,3 @@ def xenium_csv(
     logger.info(f"Number of cells exported: {len(df_selection)}")
 
     return output_csv_path
-
-
-if __name__ == "__main__":
-    data_type = settings["project"]["data_type"]
-
-    _, module_5_dir = get_module(5)
-    module_6_name, module_6_dir = get_module(6)
-    ms_settings = settings["modules"]["MuSpan"]
-    cluster_name = settings["modules"]["Annotate"]["chosen_cluster"]
-    cell_types = ms_settings["cell_types"]
-    transcript_list = ms_settings["transcripts"]
-
-    selection_name = ms_settings["selection_name"]
-    selected_fovs = ms_settings["selected_fovs"]
-    selected_celltypes = ms_settings["selected_celltypes"]
-
-    box_ids = ms_settings["box_ids"]
-    grid_csv_path = "path"
-
-    if data_type == "CosMx":
-        logger.info("Creating Selection CSVs...")
-        cosmx_csv(
-            module_dir=module_6_dir,
-            prev_module_dir=module_5_dir,
-            selection_name=selection_name,
-            cluster_col=cluster_name,
-            selected_fovs=selected_fovs,
-            selected_celltypes=selected_celltypes,
-        )
-
-    elif data_type == "Xenium":
-        logger.info("Creating Selection CSVs...")
-        # not final yet, need more filtering steps
-        cell_selection_csv = xenium_csv(
-            selection_name=selection_name,
-            genes_of_interest=transcript_list,
-            cluster_col=cluster_name,
-            box_ids=box_ids,
-            grid_csv_path=grid_csv_path,
-        )

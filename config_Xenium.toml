@@ -4,13 +4,11 @@ log_level = "INFO" # Define the logging level here. Options are: DEBUG, INFO, WA
 seed = 21122023    # Random seed for reproducibility
 
 [project]
-analysis_name = "Tisku"
-data_type = "Xenium"
+analysis_name = "Tisku" # sets the name of your analysis folder
+data_type = "Xenium" # Xenium or CosMx
 
 [io]
 base_dir = "."                         # Base directory for the project (relative to the current working directory)
-dataset_id = ""                
-output_dir = "analysis"                # Directory where the output will be saved (relative to base_dir)
 dataset_dir = "data/Tisku"                  # Directory containing dataset (Xenium / CosMx) (relative to data_dir)
 zarr_dir = "data/Tisku.zarr"               # Directory where Zarr data will be stored (relative to data_dir)
 logging_path = "logs"                  # Directory where logs will be saved (relative to output_dir)
@@ -29,7 +27,6 @@ modules = [
 [modules.QualityControl]
 min_counts = 10 # Minimum number of counts required for a cell to pass filtering
 min_cells = 5 # Minimum number of cells expressed required for a gene to pass filtering
-min_dapi = '' # Minimum mean DAPI intensity required for a gene to pass filtering (CosMx)
 
 
 [modules.DimensionReduction]
@@ -42,13 +39,13 @@ cluster_name = "leiden"  # name of the cluster column in adata.obs
 [modules.Annotate]
 chosen_cluster = "leiden_n10_r0.1"  # Put the exact name of the one you liked best
 
-ScType_anno =  true 
+ScType_anno =  true # true / false
 ScType_mode = "All" # All or one (chosen cluster)
-ScType_custom_db = "" # blank string if NOT using custom db
-ScType_tissue = "Lung"  # blank string if using custom db
+ScType_custom_db = "" # use when using custom marker list
+ScType_tissue = "Lung"  # remove if using custom marker list
 
-CellTypist_anno = true
-CellTypist_mode = "All"
+CellTypist_anno = true # true / false
+CellTypist_mode = "All" # All or one (chosen cluster)
 CellTypist_model = "Human_Lung_Atlas"
 
 [modules.ViewImages]
@@ -59,8 +56,8 @@ gene_list = [ # List of genes to visualize on tissue
     "PTPRC",
     "ACTA2",
 ]
-n_grid_x = 10
-n_grid_y = 10
+n_grid_x = 10 # grid to divide xenium slide (x axis)
+n_grid_y = 10 # grid to divide xenium slide (y axis)
 
 [modules.MuSpan]
 transcripts = [ # List of genes to visualize on tissue
@@ -80,9 +77,8 @@ max_edge_distance_shape = 1
 k_list = [2, 5, 10, 15]
 
 
-selection_name = "pomni"
-
 # For xenium cell selection 
-selected_celltypes = ["0", "1", "2"]
-cell_types = [0, 1]
-box_ids = [38, 28]
+selection_name = "pomni" # the selection csv will be named this
+selected_celltypes = ["0", "1", "2"] # selected clusters (based on chosen cluster) to visualize in MuSpan
+box_ids = [38, 28]  # selected boxes (based ROI plot from View Images module) to visualize in MuSpan
+cell_types = [0, 1] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes

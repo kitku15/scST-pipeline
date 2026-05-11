@@ -8,7 +8,6 @@ import numpy as np
 import scanpy as sc
 import seaborn as sns
 import spatialdata as sd
-from config import settings, get_module
 import gc
 import squidpy as sq
 import matplotlib
@@ -20,7 +19,7 @@ warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
+def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi=None):
     # 1. Platform-specific configuration
     if data_type == "CosMx":
         cfg = {
@@ -44,9 +43,6 @@ def run_qc(data_type, module_dir, zarr_path, min_counts, min_cells, min_dapi):
     adata = sdata.tables["table"]
     del sdata
     gc.collect()
-
-    # print(adata.obs.columns)
-    # print(adata.var.columns)
 
     # 3. Harmonize CosMx to Xenium logic
     if data_type == "CosMx":
@@ -231,15 +227,3 @@ def plot_spatial_qc(module_dir, adata, cfg):
         module_dir / "Area_scatter.png", dpi=300, facecolor="white", bbox_inches="tight"
     )
     plt.close(fig)
-
-
-if __name__ == "__main__":
-    module_1_name, module_1_dir = get_module(1)
-    zarr_path = settings["io"]["zarr_dir"]
-    data_type = settings["project"]["data_type"]
-
-    min_counts = settings["modules"]["QualityControl"]["min_counts"]
-    min_cells = settings["modules"]["QualityControl"]["min_cells"]
-    min_dapi = settings["modules"]["QualityControl"]["min_dapi"]
-
-    run_qc(data_type, module_1_dir, zarr_path, min_counts, min_cells, min_dapi)
