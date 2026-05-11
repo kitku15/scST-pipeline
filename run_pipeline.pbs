@@ -24,9 +24,6 @@ echo PBS: working directory is $PBS_O_WORKDIR
 echo PBS: execution mode is $PBS_ENVIRONMENT
 echo PBS: job identifier is $PBS_JOBID
 echo PBS: job name is $PBS_JOBNAME
-echo PBS: job number is $JOBNUM
-echo PBS: logfile is $LOGFILE
-echo PBS: node file is $PBS_NODEFILE
 echo PBS: current home directory is $PBS_O_HOME
 echo ------------------------------------------------------
 
