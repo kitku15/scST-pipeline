@@ -1,0 +1,14 @@
+name: ST_env
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - setuptools=81.0.0
+  - wheel
+  - gcc_linux-64
+  - gxx_linux-64
+  - glib
+  - libgl
+  - curl
