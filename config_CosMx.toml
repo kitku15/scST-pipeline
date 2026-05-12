@@ -79,6 +79,6 @@ k_list = [2, 5, 10, 15]
 
 # For cosmx custom cell selection 
 selection_name = "phageku" # the selection csv will be named this
-selected_celltypes = ["10", "14", "5", "18"] # selected clusters (based on chosen cluster) to visualize in MuSpan
+selected_celltypes = ["8", "15", "11", "16"] # selected clusters (based on chosen cluster) to visualize in MuSpan
 selected_fovs = ["33", "32", "28", "29"] # selected boxes (based ROI plot from View Images module) to visualize in MuSpan
-cell_types = [14, 18] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes
+cell_types = [15, 16] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes
