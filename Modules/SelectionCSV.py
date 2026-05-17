@@ -49,10 +49,9 @@ def cosmx_csv(
         ]
 
     # save selection using a custom selection name
-    output_csv_path = f"{module_dir}/{selection_name}_CosMxselection.csv"
-    output_dir = Path(module_dir)
+    output_dir = Path(module_dir) / selection_name
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    output_csv_path = output_dir / f"{selection_name}_CosMxselection.csv"
     df_selection.to_csv(output_csv_path, index=False)
 
     logger.info(f"Successfully created {output_csv_path}")
@@ -185,9 +184,9 @@ def xenium_csv(
 
     # Write to CSV
     total_selection_area = df_selection["Area (µm^2)"].sum()
-    output_dir = Path(module_dir)
+    output_dir = Path(module_dir) / selection_name
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_csv_path = f"{output_dir}/{selection_name}_XeniumSelection.csv"
+    output_csv_path = output_dir / f"{selection_name}_XeniumSelection.csv"
 
     with open(output_csv_path, "w") as f:
         f.write(f"#Selection name: {selection_name}\n")

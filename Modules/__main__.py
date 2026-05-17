@@ -39,6 +39,7 @@ if __name__ == "__main__":
     from MuSpan import run_muspan
     from MuSpan_SpatialGraph import run_muspan_graph
     from MuSpan_SpatialStats import run_muspan_stats
+    from MuSpan_Shapes import run_muspan_shapes
     from SelectionCSV import cosmx_csv, xenium_csv
 
     # Setup Logging
@@ -122,14 +123,18 @@ if __name__ == "__main__":
                     module_2_name, module_2_dir = get_module(2)
                     dr_settings = settings["modules"]["DimensionReduction"]
                     run_dimension_reduction(
-                        data_type,
-                        module_1_dir,
-                        module_2_dir,
-                        module_2_name,
-                        dr_settings["n_comps"],
-                        dr_settings["n_neighbors"],
-                        dr_settings["resolution"],
-                        dr_settings["cluster_name"],
+                        data_type=data_type,
+                        prev_module_dir=module_1_dir,
+                        module_dir=module_2_dir,
+                        module_name=module_2_name,
+                        n_comps=dr_settings["n_comps"],
+                        n_neighbors_list=dr_settings["n_neighbors"],
+                        resolution_list=dr_settings["resolution"],
+                        cluster_name=dr_settings["cluster_name"],
+                        scviva_layer=dr_settings["scviva_layer"],
+                        scviva_batch_key=dr_settings.get("scviva_batch_key", None),
+                        scviva_spatial_knn=dr_settings["scviva_spatial_knn"],
+                        scviva_epochs=dr_settings["scviva_epochs"],
                     )
 
             # MODULE 3: Annotate (Cell Type Annotation and DE Analysis)
@@ -211,7 +216,7 @@ if __name__ == "__main__":
                     transcript_list = ms_settings["transcripts"]
 
                     selection_name = ms_settings["selection_name"]
-                    selected_celltypes = ms_settings["selected_celltypes"]
+                    selected_celltypes = ms_settings.get("selected_celltypes", None)
 
                     selected_fovs = ms_settings.get("selected_fovs", None)
                     box_ids = ms_settings.get("box_ids", None)
@@ -298,6 +303,15 @@ if __name__ == "__main__":
                             domain=domain,
                             cluster_labels=cluster_name,
                             cell_types=cell_types,
+                        )
+
+                    with tracker.measure("Module 6e: MuSpAn Shape Analysis"):
+                        logger.info("Running MuSpAn Shape Analysis...")
+                        run_muspan_shapes(
+                            module_dir=module_6_dir,
+                            domain=domain,
+                            chosen_cluster=cluster_name,
+                            selected_celltypes=selected_celltypes,
                         )
 
         logger.info(

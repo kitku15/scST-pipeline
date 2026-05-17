@@ -331,7 +331,7 @@ def run_annotate(
                 )
 
     if (
-        ScType_anno == "False" and CellTypist_anno == "False"
+        ScType_anno is False and CellTypist_anno is False
     ):  # (user does not want any Cell Type Annotation)
         cluster_DE_analysis(adata, cluster_name, module_dir)
 

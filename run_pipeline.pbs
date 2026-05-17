@@ -69,10 +69,11 @@ echo "Running Spatial Pipeline in Apptainer" >&2
 echo "  Config : $CONFIG_FILE" >&2
 echo "  Image  : $SIF_IMAGE" >&2
 
+# currently all input and output are in $PBS_O_WORKDIR, so bind it to /app in the container
+# could add --modules if only want to run specific modules
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
-  # currently all input and output are in $PBS_O_WORKDIR, so bind it to /app in the container
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" # could add --modules if only want to run specific modules
+  "$CONFIG_NAME"
 
 echo "Pipeline finished successfully!" >&2

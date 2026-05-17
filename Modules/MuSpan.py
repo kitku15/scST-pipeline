@@ -41,7 +41,7 @@ def run_muspan(
         print(dataset_type)
         raise ValueError("dataset_type must be either 'CosMx' or 'Xenium'")
 
-    out_dir = Path(module_dir)
+    out_dir = Path(module_dir) / domain_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load AnnData

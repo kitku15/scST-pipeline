@@ -36,7 +36,13 @@ n_comps = 50  # number of principal components to compute
 n_pca = 30 # no of PCs for UMAP                   
 n_neighbors = [30, 50]  # List of neighbors to test                    
 resolution = [1.0, 2.0]  # List of resolutions to test                  
-cluster_name = "leiden"  # name of the cluster column in adata.obs  
+cluster_name = "leiden"  # name of the cluster column in adata.obs
+
+# SCVIVA settings
+scviva_layer = "counts"  # Layer with raw integer counts (required for scvi)
+scviva_batch_key = "fov"  # Batch/Sample key if you have multiple FOVs/Samples
+scviva_spatial_knn = 20  # Number of spatial neighbors for scVIVA env graph
+scviva_epochs = 400  # Max epochs for scVIVA training
 
 [modules.Annotate]
 chosen_cluster = "leiden_n50_r1.0"  # Put the exact name of the one you liked best
@@ -78,7 +84,7 @@ k_list = [2, 5, 10, 15]
 
 
 # For cosmx custom cell selection 
-selection_name = "phageku" # the selection csv will be named this
-selected_celltypes = ["8", "15", "11", "16"] # selected clusters (based on chosen cluster) to visualize in MuSpan
-selected_fovs = ["33", "32", "28", "29"] # selected boxes (based ROI plot from View Images module) to visualize in MuSpan
-cell_types = [15, 16] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes
+selection_name = "dnaku" # the selection csv will be named this
+# selected_celltypes = ["0", "1", "2", "3", "6", "14"] # selected clusters (based on chosen cluster) to visualize in MuSpan
+selected_fovs = ["8"] # selected boxes (based ROI plot from View Images module) to visualize in MuSpan
+cell_types = [1, 16] # two clusters (based on chosen cluster) for pair spatial stat comparison. Must be 2 from selected_celltypes

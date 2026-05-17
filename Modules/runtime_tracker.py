@@ -20,7 +20,7 @@ class RuntimeTracker:
     @contextmanager
     def measure(self, process_name: str):
         """Context manager to measure execution time of a block of code."""
-        logger.info(f"⏱️ [START] Tracking runtime for: {process_name}")
+        logger.info(f"[START] Tracking runtime for: {process_name}")
         start_time = time.time()
         status = "Completed"
 
@@ -50,11 +50,11 @@ class RuntimeTracker:
             # Log the result
             if status == "Completed":
                 logger.info(
-                    f"✅ [DONE] {process_name} finished in {duration_sec:.2f}s ({duration_min:.2f}m)"
+                    f"[DONE] {process_name} finished in {duration_sec:.2f}s ({duration_min:.2f}m)"
                 )
             else:
                 logger.error(
-                    f"❌ [FAILED] {process_name} crashed after {duration_sec:.2f}s ({duration_min:.2f}m)"
+                    f"[FAILED] {process_name} crashed after {duration_sec:.2f}s ({duration_min:.2f}m)"
                 )
 
     def save(self):
