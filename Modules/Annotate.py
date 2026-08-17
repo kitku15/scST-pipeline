@@ -1,22 +1,24 @@
 """Annotation module."""
 
+import re
 import warnings
 from logging import getLogger
+from pathlib import Path
 
 import pandas as pd
 import scanpy as sc
-import re
-from CellAnnotation_ScType import run_ScType
 from CellAnnotation_CellTypist import run_CellTypist
 from CellAnnotation_plotting import run_CellType_plotting
+from CellAnnotation_ScType import run_ScType
 from lists import CellTypist_models, ScType_tissuetypes
-from pathlib import Path
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def cluster_DE_analysis(adata, cluster_col, module_dir, method=None, celltype_col=None):
+def cluster_DE_analysis(
+    adata, cluster_col, module_dir, method=None, celltype_col=None, plot=True
+):
     """
     cluster_col: the groupings / clustering column that the DE analysis will be based on
     """
@@ -29,35 +31,54 @@ def cluster_DE_analysis(adata, cluster_col, module_dir, method=None, celltype_co
         sc.settings.figdir = output_dir
         celltype_col = cluster_col
 
+    # Drop unused categories in the metadata column if it is categorical
+    if hasattr(adata.obs[celltype_col], "cat"):
+        adata.obs[celltype_col] = adata.obs[celltype_col].cat.remove_unused_categories()
+
+    # 2. Remove dendrogram metadata if present
+    dendro_key = f"dendrogram_{celltype_col}"
+    if dendro_key in adata.uns:
+        del adata.uns[dendro_key]
+
     # Annotate cell clusters
 
     # Calculate the differentially expressed genes for every cluster,
     # compared to the rest of the cells in our adata
     logger.info("Calculating differentially expressed genes for each cluster...")
-    sc.tl.rank_genes_groups(adata, groupby=celltype_col, method="wilcoxon")
-
-    # 1. Plot differentially expressed genes for each cluster
-    logger.info("Plotting the top differentially expressed genes for each cluster...")
-    sc.pl.rank_genes_groups_dotplot(
+    sc.tl.rank_genes_groups(
         adata,
         groupby=celltype_col,
-        standard_scale="var",
-        n_genes=5,
-        show=False,
-        save=f"{celltype_col}.png",
+        method="wilcoxon",
+        use_raw=True,
     )
-    logger.info(f"Dotplot saved to {sc.settings.figdir}")
 
-    logger.info("Plot differentially expressed genes for each cluster in elbow plot...")
-    sc.pl.rank_genes_groups(
-        adata,
-        n_genes=10,
-        ncols=3,
-        legend_fontsize=10,
-        show=False,
-        save=f"_{celltype_col}.png",
-    )
-    logger.info(f"DE Analysis plots saved to {sc.settings.figdir}")
+    # 1. Plot differentially expressed genes for each cluster
+    if plot:
+        logger.info(
+            "Plotting the top differentially expressed genes for each cluster..."
+        )
+        sc.pl.rank_genes_groups_dotplot(
+            adata,
+            groupby=celltype_col,
+            standard_scale="var",
+            n_genes=5,
+            show=False,
+            save=f"{celltype_col}.png",
+        )
+        logger.info(f"Dotplot saved to {sc.settings.figdir}")
+
+        logger.info(
+            "Plot differentially expressed genes for each cluster in elbow plot..."
+        )
+        sc.pl.rank_genes_groups(
+            adata,
+            n_genes=10,
+            ncols=3,
+            legend_fontsize=10,
+            show=False,
+            save=f"_{celltype_col}.png",
+        )
+        logger.info(f"DE Analysis plots saved to {sc.settings.figdir}")
 
     # Make a dataframe of marker expression
     logger.info("Save files for differentially expressed genes for each cluster...")
@@ -155,7 +176,8 @@ def run_annotate(
     datatype,
     module_dir,
     cluster_name,
-    prev_module_dir,
+    input_adata_path,
+    sample_key,
     ScType_anno=False,
     ScType_tissue=None,
     ScType_custom_db=None,
@@ -163,6 +185,11 @@ def run_annotate(
     CellTypist_anno=False,
     CellTypist_model=None,
     CellTypist_mode="All",
+    CellTypist_custom_model=None,
+    CellTypist_train=False,
+    CellTypist_train_data=None,
+    CellTypist_train_labels=None,
+    plot=True,
 ):
     """Run annotation."""
 
@@ -171,7 +198,8 @@ def run_annotate(
 
     # Import data
     logger.info("Loading data...")
-    adata = sc.read_h5ad(prev_module_dir / "adata.h5ad")
+    input_adata_path = Path(input_adata_path)
+    adata = sc.read_h5ad(input_adata_path)
 
     # Set the directory where to save the ScanPy figures
     sc.settings.figdir = module_dir
@@ -201,15 +229,17 @@ def run_annotate(
                     )
 
                     # 2. Cell Type plotting
-                    run_CellType_plotting(
-                        "ScType",
-                        datatype,
-                        module_dir,
-                        adata,
-                        cluster_col,
-                        sctype_column,
-                        umap_col,
-                    )
+                    if plot:
+                        run_CellType_plotting(
+                            "ScType",
+                            datatype,
+                            module_dir,
+                            adata,
+                            sample_key,
+                            cluster_col,
+                            sctype_column,
+                            umap_col,
+                        )
 
                     # 3. DE analysis
                     cluster_DE_analysis(
@@ -218,6 +248,7 @@ def run_annotate(
                         module_dir,
                         method="ScType",
                         celltype_col=sctype_column,
+                        plot=plot,
                     )
 
             else:  # only do ScType Annotation for one clustering
@@ -232,15 +263,17 @@ def run_annotate(
                 )
 
                 # 2. Cell Type plotting
-                run_CellType_plotting(
-                    "ScType",
-                    datatype,
-                    module_dir,
-                    adata,
-                    cluster_name,
-                    sctype_column,
-                    umap_col,
-                )
+                if plot:
+                    run_CellType_plotting(
+                        "ScType",
+                        datatype,
+                        module_dir,
+                        adata,
+                        sample_key,
+                        cluster_name,
+                        sctype_column,
+                        umap_col,
+                    )
 
                 # 3. DE analysis
                 cluster_DE_analysis(
@@ -249,12 +282,15 @@ def run_annotate(
                     module_dir,
                     method="ScType",
                     celltype_col=sctype_column,
+                    plot=plot,
                 )
 
     if CellTypist_anno:
         if (
-            CellTypist_model not in CellTypist_models
-        ):  # user selected model thats unavailable
+            not CellTypist_custom_model
+            and not CellTypist_train
+            and CellTypist_model not in CellTypist_models
+        ):
             message = (
                 f"Invalid model selection: {CellTypist_model}\n"
                 "Please select one of the following:\n- "
@@ -274,20 +310,27 @@ def run_annotate(
                 for umap_col, cluster_col in cluster_cols:
                     # 1. Run CellTypist, make predictions
                     adata, indivcellanno_col, majorvotingcellanno_col = run_CellTypist(
-                        adata, CellTypist_model, cluster_col
-                    )
-
-                    # 2. Cell Type plotting
-                    run_CellType_plotting(
-                        "CellTypist",
-                        datatype,
-                        module_dir,
                         adata,
+                        CellTypist_model,
                         cluster_col,
-                        majorvotingcellanno_col,
-                        umap_col,
-                        indivcellanno_col,
+                        custom_model_path=CellTypist_custom_model,
+                        train_model=CellTypist_train,
+                        train_data_path=CellTypist_train_data,
+                        train_labels_col=CellTypist_train_labels,
                     )
+                    # 2. Cell Type plotting
+                    if plot:
+                        run_CellType_plotting(
+                            "CellTypist",
+                            datatype,
+                            module_dir,
+                            adata,
+                            sample_key,
+                            cluster_col,
+                            majorvotingcellanno_col,
+                            umap_col,
+                            indivcellanno_col,
+                        )
 
                     # 3. DE analysis
                     cluster_DE_analysis(
@@ -296,6 +339,7 @@ def run_annotate(
                         module_dir,
                         method="CellTypist",
                         celltype_col=majorvotingcellanno_col,
+                        plot=plot,
                     )
 
             else:  # only do CellTypist Annotation for one clustering
@@ -306,20 +350,28 @@ def run_annotate(
 
                 # 1. Run CellTypist, make predictions
                 adata, indivcellanno_col, majorvotingcellanno_col = run_CellTypist(
-                    adata, CellTypist_model, cluster_name
+                    adata,
+                    CellTypist_model,
+                    cluster_name,
+                    custom_model_path=CellTypist_custom_model,
+                    train_model=CellTypist_train,
+                    train_data_path=CellTypist_train_data,
+                    train_labels_col=CellTypist_train_labels,
                 )
 
                 # 2. Cell Type plotting
-                run_CellType_plotting(
-                    "CellTypist",
-                    datatype,
-                    module_dir,
-                    adata,
-                    cluster_name,
-                    majorvotingcellanno_col,
-                    umap_col,
-                    indivcellanno_col,
-                )
+                if plot:
+                    run_CellType_plotting(
+                        "CellTypist",
+                        datatype,
+                        module_dir,
+                        adata,
+                        sample_key,
+                        cluster_name,
+                        majorvotingcellanno_col,
+                        umap_col,
+                        indivcellanno_col,
+                    )
 
                 # 3. DE analysis
                 cluster_DE_analysis(
@@ -328,14 +380,42 @@ def run_annotate(
                     module_dir,
                     method="CellTypist",
                     celltype_col=majorvotingcellanno_col,
+                    plot=plot,
                 )
 
-    if (
-        ScType_anno is False and CellTypist_anno is False
-    ):  # (user does not want any Cell Type Annotation)
-        cluster_DE_analysis(adata, cluster_name, module_dir)
+    # If using scANVI (or pre-computed labels) and skipping ScType/CellTypist
+    if not ScType_anno and not CellTypist_anno:
+        logger.info(f"Using pre-computed labels from '{cluster_name}' (e.g., scANVI).")
+
+        # 1. Plotting
+        # Assuming UMAP was generated in DimReduc as X_umap_n20, find the first available UMAP
+        umap_col = next((k for k in adata.obsm.keys() if "X_umap" in k), "X_umap")
+        umap_col = umap_col.removeprefix("X_")  # Remove 'X_' prefix for scanpy plotting
+
+        if plot:
+            run_CellType_plotting(
+                method="PreAnnotated",
+                datatype=datatype,
+                module_dir=module_dir,
+                adata=adata,
+                sample_key=sample_key,
+                cluster_col=cluster_name,
+                celltype_col=cluster_name,
+                umap_col=umap_col,
+            )
+
+        # 2. DE analysis
+        cluster_DE_analysis(
+            adata,
+            cluster_name,
+            module_dir,
+            method="PreAnnotated",
+            celltype_col=cluster_name,
+            plot=plot,
+        )
 
     # Save anndata object (at the end)
-    adata.write_h5ad(module_dir / "adata.h5ad")
-    logger.info(f"Data saved to {module_dir / 'adata.h5ad'}")
+    out_path = module_dir / input_adata_path.name
+    adata.write_h5ad(out_path)
+    logger.info(f"Data saved to {out_path}")
     logger.info("Annotation module completed successfully.")

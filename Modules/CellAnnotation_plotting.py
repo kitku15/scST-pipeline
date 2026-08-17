@@ -1,16 +1,16 @@
+import hashlib
+import math
 import warnings
 from logging import getLogger
-
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-import matplotlib as mpl
-import numpy as np
-import squidpy as sq
-import math
-import hashlib
-import scanpy as sc
 from pathlib import Path
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import squidpy as sq
+from matplotlib.colors import ListedColormap
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
@@ -152,129 +152,155 @@ def summary_celltypecomp(
         print("Done", file=f)
 
 
-def plot_spatialplotsplit(adata, spatial_key, celltype_col, output_file, n_cols=4):
+def plot_spatialplotsplit(
+    adata, spatial_key, sample_key, celltype_col, output_file, n_cols=4
+):
     """
-    Makes a spatial plot for all celltypes highlighting regions of that specific cell type
-    Makes it easy to see spatial distribution of Cell Types
-    Can adjust number of columns
-    celltype_col -> choose which cell type column to color by
+    Makes a spatial plot for all celltypes highlighting regions of that specific cell type.
+    Creates ONE separate image file per sample (slide) to prevent coordinate overlap.
     """
-    # 1. Get all unique cell types from the CellTypist column
-    cell_types = adata.obs[celltype_col].astype(str).unique()
-    cell_types = sorted(cell_types)
 
-    # 2. Set up the matplotlib grid
-    n_types = len(cell_types)
-    n_rows = math.ceil(n_types / n_cols)
+    # Ensure output_file is a Path object so we can easily manipulate the filename
+    out_path = Path(output_file)
 
-    # Create the figure and axes
-    fig, axes = plt.subplots(
-        n_rows, n_cols, figsize=(n_cols * 5, n_rows * 2.5), dpi=300
-    )
-    axes = axes.flatten()
+    for sample in adata.obs[sample_key].unique():
+        # Create a deep copy of the subset so we can safely add columns like "highlight"
+        adata_sample = adata[adata.obs[sample_key] == sample].copy()
 
-    # 3. Loop through each cell type and plot
-    for i, cell_type in enumerate(cell_types):
-        ax = axes[i]
+        # 1. Get all unique cell types from the ORIGINAL adata so legends/colors are consistent
+        # even if a sample happens to be missing one rare cell type.
+        cell_types = adata.obs[celltype_col].astype(str).unique()
+        cell_types = sorted(cell_types)
 
-        # Check against "majority_voting"
-        adata.obs["highlight"] = np.where(
-            adata.obs[celltype_col].astype(str) == cell_type, cell_type, "other"
+        # 2. Set up the matplotlib grid
+        n_types = len(cell_types)
+        n_rows = math.ceil(n_types / n_cols)
+
+        # Create the figure and axes
+        fig, axes = plt.subplots(
+            n_rows, n_cols, figsize=(n_cols * 5, n_rows * 2.5), dpi=300
+        )
+        axes = axes.flatten()
+
+        # 3. Loop through each cell type and plot
+        for i, cell_type in enumerate(cell_types):
+            ax = axes[i]
+
+            # Check against the celltype_col
+            adata_sample.obs["highlight"] = np.where(
+                adata_sample.obs[celltype_col].astype(str) == cell_type,
+                cell_type,
+                "other",
+            )
+
+            adata_sample.obs["highlight"] = adata_sample.obs["highlight"].astype(
+                "category"
+            )
+            adata_sample.obs["highlight"] = adata_sample.obs[
+                "highlight"
+            ].cat.set_categories([cell_type, "other"], ordered=True)
+
+            if "highlight_colors" in adata_sample.uns:
+                del adata_sample.uns["highlight_colors"]
+
+            # Plot on the specific axis using the SUBSET data
+            sq.pl.spatial_scatter(
+                adata_sample,
+                color="highlight",
+                spatial_key=spatial_key,
+                shape=None,
+                size=2,
+                frameon=False,
+                img=False,
+                outline=False,
+                palette=ListedColormap(["red", "lightgrey"]),
+                ax=ax,
+                title=f"{cell_type} (Sample: {sample})",
+            )
+
+        # 4. Clean up any empty subplots
+        for i in range(n_types, len(axes)):
+            axes[i].set_visible(False)
+            axes[i].axis("off")
+
+        # 5. Finalize and show
+        plt.tight_layout()
+
+        # Create a dynamic filename: e.g., "spatialplotsplit_leiden_CPIc_1.png"
+        dynamic_out_file = (
+            out_path.parent / f"{out_path.stem}_{sample}{out_path.suffix}"
         )
 
-        adata.obs["highlight"] = adata.obs["highlight"].astype("category")
-        adata.obs["highlight"] = adata.obs["highlight"].cat.reorder_categories(
-            [cell_type, "other"], ordered=True
+        plt.savefig(dynamic_out_file)
+        plt.close(fig)  # Crucial: Close the figure so memory doesn't explode!
+
+        logger.info(f"Saved spatial split plot for {sample} to {dynamic_out_file}")
+
+
+def plot_umapspatialscatter(
+    adata, spatial_key, sample_key, celltype_col, umap_col, output_path
+):
+    """
+    This plots a spatial scatter plot next to a UMAP in the same figure.
+    Creates ONE separate image file per sample.
+    """
+    color_key = f"{celltype_col}_colors"
+    if color_key not in adata.uns:
+        logger.info(
+            f"No colors found for {celltype_col}. Generating dynamic palette..."
         )
+        palette_map = get_dynamic_palette(adata, celltype_col)
+        ordered_categories = adata.obs[celltype_col].cat.categories
+        adata.uns[color_key] = [palette_map[cat] for cat in ordered_categories]
+    else:
+        logger.info(f"Using existing colors for {celltype_col}")
 
-        if "highlight_colors" in adata.uns:
-            del adata.uns["highlight_colors"]
+    out_path = Path(output_path)
 
-        # Plot on the specific axis
+    logger.info(f"Generating side-by-side plots for {celltype_col} per sample...")
+
+    for sample in adata.obs[sample_key].unique():
+        adata_sample = adata[adata.obs[sample_key] == sample].copy()
+
+        # Create the figure
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 10), dpi=300)
+
+        # 1. Spatial Scatter Plot (Just for this specific sample)
         sq.pl.spatial_scatter(
-            adata,
-            color="highlight",
+            adata_sample,
+            color=celltype_col,
             spatial_key=spatial_key,
+            ax=ax1,
             shape=None,
-            size=2,
-            frameon=False,
             img=False,
-            outline=False,
-            palette=ListedColormap(["red", "lightgrey"]),
-            ax=ax,
-            title=f"{cell_type}",
+            size=1,
+            alpha=0.8,
+            frameon=False,
+            legend_fontsize="x-small",
+            title=f"Spatial: {celltype_col} ({sample})",
         )
 
-    # 4. Clean up any empty subplots
-    for i in range(n_types, len(axes)):
-        axes[i].set_visible(False)
-        axes[i].axis("off")
+        # 2. UMAP Plot (We use the GLOBAL adata here so we see all cells for context)
+        sc.pl.embedding(
+            adata,
+            basis=umap_col,
+            color=celltype_col,
+            ax=ax2,
+            show=False,
+            frameon=False,
+            title=f"Global UMAP: {celltype_col}",
+        )
 
-    # 5. Finalize and show
-    plt.tight_layout()
-    plt.savefig(output_file)
+        plt.tight_layout()
 
-    # adata.obs.drop(columns=["highlight"], inplace=True)
-    # adata.obs.drop(columns=["highlight_colors"], inplace=True)
+        # Dynamic filename per sample
+        dynamic_out_file = (
+            out_path.parent / f"{out_path.stem}_{sample}{out_path.suffix}"
+        )
+        plt.savefig(dynamic_out_file, bbox_inches="tight")
+        plt.close(fig)
 
-
-def plot_umapspatialscatter(adata, spatial_key, celltype_col, umap_col, output_path):
-    """
-    This plots a spatial scatter plot next to a UMAP in the same figure
-    """
-    # Apply color mappping that ensures in every single plot each cell type is the same color
-    # Generate the palette based on the results
-    palette_map = get_dynamic_palette(adata, celltype_col)
-
-    # Apply to adata.uns so Scanpy/Squidpy uses it automatically
-    ordered_categories = adata.obs[celltype_col].cat.categories
-    adata.uns[f"{celltype_col}_colors"] = [
-        palette_map[cat] for cat in ordered_categories
-    ]
-
-    logger.info(f"Generating side-by-side plots for {celltype_col}...")
-
-    # Create the figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(22, 10), dpi=300)
-
-    # 1. Spatial Scatter Plot (Squidpy)
-    # Note: 'show' argument is REMOVED here
-    sq.pl.spatial_scatter(
-        adata,
-        color=celltype_col,
-        spatial_key=spatial_key,
-        library_id=None,  # This helps with the WARNING you saw
-        ax=ax1,
-        shape=None,
-        img=False,
-        size=1,
-        alpha=0.8,
-        frameon=False,
-        legend_fontsize="x-small",
-        title=f"Spatial: {celltype_col}",
-    )
-
-    # 2. UMAP Plot (Scanpy)
-    # Note: Scanpy DOES use 'show=False'
-    sc.pl.embedding(
-        adata,
-        basis=umap_col,
-        color=celltype_col,
-        ax=ax2,
-        show=False,
-        frameon=False,
-        title=f"UMAP: {celltype_col}",
-    )
-
-    # Final touches
-    plt.tight_layout()
-
-    # Save the combined figure
-    # cant use the same syntax as scpy but have to write full path from root dir
-    plt.savefig(output_path, bbox_inches="tight")
-    plt.close(fig)
-
-    print(f"Saved combined plot to: {output_path}")
+    print(f"Saved combined plots to: {out_path.parent}")
 
 
 def run_CellType_plotting(
@@ -282,6 +308,7 @@ def run_CellType_plotting(
     datatype,
     module_dir,
     adata,
+    sample_key,
     cluster_col,
     celltype_col,
     umap_col,
@@ -312,16 +339,18 @@ def run_CellType_plotting(
             indivcellanno_col,
             output_file=f"{fig_dir}/celltypecomp_{celltype_col}.txt",
         )
-
-    plot_spatialplotsplit(
-        adata,
-        spatial_key,
-        celltype_col,
-        output_file=f"{fig_dir}/spatialplotsplit_{celltype_col}.png",
-    )
+    # temporary disabling spatial split plots for time save
+    # plot_spatialplotsplit(
+    #     adata,
+    #     spatial_key,
+    #     sample_key,
+    #     celltype_col,
+    #     output_file=f"{fig_dir}/spatialplotsplit_{celltype_col}.png",
+    # )
     plot_umapspatialscatter(
         adata,
         spatial_key,
+        sample_key,
         celltype_col,
         umap_col,
         output_path=f"{fig_dir}/umapspatialscatter_{celltype_col}.png",

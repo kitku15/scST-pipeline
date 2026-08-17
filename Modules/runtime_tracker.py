@@ -1,10 +1,11 @@
 """Runtime tracking module."""
 
 import time
-import pandas as pd
-from pathlib import Path
 from contextlib import contextmanager
 from logging import getLogger
+from pathlib import Path
+
+import pandas as pd
 
 logger = getLogger(__name__)
 

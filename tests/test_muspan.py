@@ -1,8 +1,9 @@
 # tests/test_muspan.py
-import pytest
-from unittest.mock import patch, MagicMock
-from MuSpan import run_muspan
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
+import pytest
+from MuSpan import run_muspan
 
 # Skip this entire file if the user hasn't pip installed muspan yet
 pytest.importorskip("muspan")

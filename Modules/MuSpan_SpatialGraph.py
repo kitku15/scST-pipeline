@@ -6,7 +6,6 @@ from logging import getLogger
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
@@ -36,38 +35,46 @@ def run_muspan_graph(
         )
         raise ModuleNotFoundError("MuSpAn package not found")
 
-    # Set variables from config
     color_map = sns.color_palette("Blues", as_cmap=True)
-
-    # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
 
-    # Create delanuay triangulation spatial graph
-    logger.info("Creating Delaunay triangulation spatial graph...")
-    create_delaunay_unfiltered_network(domain)
-    create_delaunay_filt_network(domain, min_edge_distance, max_edge_distance)
-    logger.info("Plotting filtered and unfiltered Delaunay networks...")
-    plot_delaunay_networks(domain, module_dir)
+    domain_collections = list(domain.collections.keys())
 
-    # Create proximity triangulation spatial graph with point-like objects
-    logger.info("Creating Proximity based networks (point-like objects)...")
-    create_proximity_point_networks(domain, distance_list)
-    logger.info("Plotting Proximity networks (point-like objects)...")
-    plot_proximity_networks(domain, module_dir, color_map, distance_list)
+    if "Cell centroids" in domain_collections:
+        logger.info("Creating Delaunay triangulation spatial graph...")
+        create_delaunay_unfiltered_network(domain)
+        create_delaunay_filt_network(domain, min_edge_distance, max_edge_distance)
 
-    # Create proximity triangulation spatial graph with shape-like objects
-    logger.info("Creating Proximity based networks (shape-like objects)...")
-    create_proximity_shape(domain, min_edge_distance_shape, max_edge_distance_shape)
-    logger.info("Plotting Proximity networks (shape-like objects)...")
-    plot_proximity_shape(domain, module_dir)
+        logger.info("Plotting filtered and unfiltered Delaunay networks...")
+        plot_delaunay_networks(domain, module_dir)
 
-    # Create KNN based networks
-    logger.info("Creating KNN based networks ...")
-    create_knn_networks(domain, k_list)
-    logger.info("Plotting KNN based networks...")
-    plot_knn_networks(domain, module_dir, color_map, k_list)
+        logger.info("Creating Proximity based networks (point-like objects)...")
+        create_proximity_point_networks(domain, distance_list)
 
-    # Confirm the domain has the expected labels
+        logger.info("Plotting Proximity networks (point-like objects)...")
+        plot_proximity_networks(domain, module_dir, color_map, distance_list)
+
+        logger.info("Creating KNN based networks ...")
+        create_knn_networks(domain, k_list)
+
+        logger.info("Plotting KNN based networks...")
+        plot_knn_networks(domain, module_dir, color_map, k_list)
+    else:
+        logger.warning(
+            "'Cell centroids' collection is missing. Skipping point-based networks."
+        )
+
+    if "Cell boundaries" in domain_collections:
+        logger.info("Creating Proximity based networks (shape-like objects)...")
+        create_proximity_shape(domain, min_edge_distance_shape, max_edge_distance_shape)
+
+        logger.info("Plotting Proximity networks (shape-like objects)...")
+        plot_proximity_shape(domain, module_dir)
+    else:
+        logger.warning(
+            "'Cell boundaries' collection is missing. Skipping shape-based networks."
+        )
+
     logger.info(f"Networks in domain: {domain.networks.keys()}")
 
     # domain_path = Path(muspan_object)
@@ -234,14 +241,24 @@ def create_proximity_point_networks(domain, distance_list):
         Calculates and saves proximity networks for each distance in `distance_list`.
     """
     for distance in distance_list:
-        ms.networks.generate_network(
-            domain,
-            network_name=f"prox network centroids {distance}",
-            network_type="Proximity",
-            objects_as_nodes=("collection", "Cell centroids"),
-            max_edge_distance=distance,
-            min_edge_distance=0,
-        )
+        try:
+            ms.networks.generate_network(
+                domain,
+                network_name=f"prox network centroids {distance}",
+                network_type="Proximity",
+                objects_as_nodes=("collection", "Cell centroids"),
+                max_edge_distance=distance,
+                min_edge_distance=0,
+            )
+        except IndexError as e:
+            logger.warning(
+                f"Skipped proximity network for distance {distance}. "
+                f"Likely no cells were within this distance (muspan internal error: {e})"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate proximity network for distance {distance}: {e}"
+            )
 
 
 def plot_proximity_shape(domain, module_dir):
@@ -309,16 +326,33 @@ def plot_knn_networks(domain, module_dir, color_map, k_list):
         - Saves the generated plot as 'muspan_knn.png' in `module_dir`.
         - Logs an info message upon successful plot saving.
     """
-    fig, axes = plt.subplots(1, len(k_list), figsize=(6 * len(k_list), 6))
+    valid_k_list = []
+    for k in k_list:
+        network_name = f"{k}-NN network"
+        if network_name in domain.networks:
+            valid_k_list.append(k)
+        else:
+            logger.warning(
+                f"Skipping plot for k={k}: '{network_name}' not found in domain."
+            )
 
-    if len(k_list) == 1:
+    if not valid_k_list:
+        logger.warning(
+            "No valid KNN networks were generated. Skipping plotting entirely."
+        )
+        return
+
+    fig, axes = plt.subplots(1, len(valid_k_list), figsize=(6 * len(valid_k_list), 6))
+
+    if len(valid_k_list) == 1:
         axes = [axes]  # Ensure axes is iterable
 
-    for i, k in enumerate(k_list):
+    for i, k in enumerate(valid_k_list):
+        network_name = f"{k}-NN network"
         axes[i].set_title(f"{k}-NN network")
         ms.visualise.visualise_network(
             domain,
-            network_name=f"{k}-NN network",
+            network_name=network_name,
             ax=axes[i],
             edge_weight_name="Distance",
             edge_cmap=color_map,
@@ -380,16 +414,33 @@ def plot_proximity_networks(domain, module_dir, color_map, distance_list):
         None. The function saves the generated plot as 'muspan_proximity_point.png'
         in the specified directory and logs the completion of the plotting process.
     """
-    fig, axes = plt.subplots(1, len(distance_list), figsize=(20, 6))
+    valid_distances = []
+    for distance in distance_list:
+        network_name = f"prox network centroids {distance}"
+        if network_name in domain.networks:
+            valid_distances.append(distance)
+        else:
+            logger.warning(
+                f"Skipping plot for distance {distance}: '{network_name}' not found in domain."
+            )
 
-    if len(distance_list) == 1:
-        axes = [axes]  # Ensure axes is iterable
+    if not valid_distances:
+        logger.warning(
+            "No valid proximity networks were generated. Skipping plotting entirely."
+        )
+        return
 
-    for i, distance in enumerate(distance_list):
+    fig, axes = plt.subplots(1, len(valid_distances), figsize=(20, 6))
+
+    if len(valid_distances) == 1:
+        axes = [axes]
+
+    for i, distance in enumerate(valid_distances):
+        network_name = f"prox network centroids {distance}"
         axes[i].set_title(f"Proximity network: {distance} max distance")
         ms.visualise.visualise_network(
             domain,
-            network_name=f"prox network centroids {distance}",
+            network_name=network_name,
             ax=axes[i],
             edge_cmap=color_map,
             edge_vmin=0,

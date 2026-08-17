@@ -1,17 +1,15 @@
 """MuSpan CosMx handling module."""
-# needs to be reviewed in detail
 
-import warnings
 import logging
+import warnings
 from logging import getLogger
 from pathlib import Path
-import pickle
+
 import matplotlib.pyplot as plt
-
-import pandas as pd
 import numpy as np
-
-from skimage import io, measure
+import pandas as pd
+from shapely.geometry import Polygon
+from shapely.validation import make_valid
 
 try:
     import muspan as ms
@@ -34,7 +32,10 @@ def CosMx_to_domain(
     cell_selection_csv,
     flat_files_dir,
     out_dir,
+    proseg_zarr_path=None,
 ):
+    PIXEL_SIZE = 0.12
+
     logger.info("Loading cell selection from CSV...")
     df_sel = pd.read_csv(cell_selection_csv)
 
@@ -51,18 +52,13 @@ def CosMx_to_domain(
         )
     }
 
-    # create dictionary with format {fov: set of selected local cell IDs}
     selected_cells_by_fov = {}
-
-    # Define Columns
-    cell_col = "cell_ID"
-    fov_col = "fov"
-
-    # get unique fovs involved in selection
-    fov_list = df_sel[fov_col].astype(str).unique().tolist()
+    fov_list = df_sel["fov"].astype(str).unique().tolist()
 
     for f in fov_list:
-        cells_in_fov = df_sel[df_sel["fov"].astype(str) == str(f)][cell_col].astype(str)
+        cells_in_fov = df_sel[df_sel["fov"].astype(str) == str(f)]["cell_ID"].astype(
+            str
+        )
         cells_in_fov = set(cells_in_fov)
         selected_cells_by_fov[f] = cells_in_fov
         logger.info(f"FOV {f}: Identified {len(cells_in_fov)} valid local cells.")
@@ -73,6 +69,85 @@ def CosMx_to_domain(
     all_trans_coords, all_trans_targets = [], []
     all_cell_coords, all_cell_ids, all_cell_types = [], [], []
     all_geometries, all_boundary_types = [], []
+
+    # -------------------------------------------------------------
+    # 1. OPTIONAL: LOAD PROSEG GEOMETRIES & CREATE MAPPING
+    # -------------------------------------------------------------
+    proseg_gdf = None
+    proseg_id_map = {}
+
+    if proseg_zarr_path:
+        try:
+            import spatialdata
+
+            logger.info(f"Loading Proseg data from {proseg_zarr_path}")
+            proseg_sdata = spatialdata.read_zarr(proseg_zarr_path)
+
+            if "cell_boundaries" in proseg_sdata.shapes:
+                proseg_gdf = proseg_sdata.shapes["cell_boundaries"]
+                if hasattr(proseg_gdf, "compute"):
+                    proseg_gdf = proseg_gdf.compute()
+                logger.info(f"Loaded {len(proseg_gdf)} Proseg cell boundaries.")
+
+            if "table" in proseg_sdata.tables:
+                proseg_obs = proseg_sdata.tables["table"].obs
+                if "fov" in proseg_obs.columns and "cell_ID" in proseg_obs.columns:
+                    for idx, row in proseg_obs.iterrows():
+                        f = str(row["fov"])
+                        c = str(row["cell_ID"]).replace(".0", "")
+                        proseg_id_map[(f, c)] = idx
+                    logger.info(
+                        "Successfully built (FOV, cell_ID) -> Proseg Global Index mapping."
+                    )
+                elif "original_cell_id" in proseg_obs.columns:
+                    # Parses Proseg's combined string format (e.g., 'c_1_28_2457' -> fov='28', cell_ID='2457')
+                    for idx, row in proseg_obs.iterrows():
+                        orig_id = str(row["original_cell_id"])
+                        parts = orig_id.split("_")
+                        if len(parts) >= 2:
+                            f = parts[-2]
+                            c = parts[-1].replace(".0", "")
+                            proseg_id_map[(f, c)] = idx
+                    logger.info(
+                        "Successfully built (FOV, cell_ID) -> Proseg Global Index mapping using 'original_cell_id'."
+                    )
+                else:
+                    logger.warning(
+                        "Proseg table.obs is missing 'fov', 'cell_ID', or 'original_cell_id' columns."
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to load Proseg Zarr: {e}")
+
+    # -------------------------------------------------------------
+    # 2. FALLBACK: LOAD CSV POLYGONS (If Proseg isn't used)
+    # -------------------------------------------------------------
+    df_poly = None
+    if proseg_gdf is None or not proseg_id_map:
+        flat_dir_path = Path(flat_files_dir)
+        poly_files = list(flat_dir_path.glob("*polygons*.csv"))
+
+        if poly_files:
+            logger.info(
+                f"Found boundary file: {poly_files[0].name}. Loading polygons into memory..."
+            )
+            df_poly = pd.read_csv(poly_files[0])
+
+            if "cellID" in df_poly.columns:
+                df_poly.rename(columns={"cellID": "cell_ID"}, inplace=True)
+
+            if (
+                "x_global_px" not in df_poly.columns
+                or "y_global_px" not in df_poly.columns
+            ):
+                logger.warning(
+                    f"Could not find global coordinates in {poly_files[0].name}. Falling back to centroids."
+                )
+                df_poly = None
+        else:
+            logger.warning(
+                "No polygons.csv file found in dataset directory. Falling back to point centroids."
+            )
 
     for current_fov in fov_list:
         logger.info(f"--- Processing FOV {current_fov} ---")
@@ -85,6 +160,7 @@ def CosMx_to_domain(
         df_pts_dask = sdata.points[points_key]
         df_all_pts = df_pts_dask.compute()
 
+        # 1. Process Transcripts
         if local_selected_cells is not None and "cell_ID" in df_all_pts.columns:
             df_pts_plot = df_all_pts[
                 df_all_pts["cell_ID"].astype(str).isin(local_selected_cells)
@@ -98,20 +174,12 @@ def CosMx_to_domain(
             ]
 
         if not df_pts_plot.empty:
-            all_trans_coords.append(df_pts_plot[["x_global_px", "y_global_px"]].values)
+            all_trans_coords.append(
+                df_pts_plot[["x_global_px", "y_global_px"]].values * PIXEL_SIZE
+            )
             all_trans_targets.append(df_pts_plot["target"].astype(str).values)
 
-        if "cell_ID" in df_all_pts.columns and "x_global_px" in df_all_pts.columns:
-            valid_pts = df_all_pts[df_all_pts["cell_ID"].astype(str) != "0"].copy()
-            valid_pts["cell_ID_str"] = (
-                valid_pts["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
-            )
-            global_centers = valid_pts.groupby("cell_ID_str")[
-                ["x_global_px", "y_global_px"]
-            ].mean()
-        else:
-            global_centers = pd.DataFrame()
-
+        # 2. Get valid cells from AnnData
         sdata_table = sdata.tables["table"]
         mask = sdata_table.obs["fov"].astype(str) == str(current_fov)
         adata_fov = sdata_table[mask]
@@ -123,160 +191,147 @@ def CosMx_to_domain(
             adata_fov.obs["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
         )
 
-        padded_fov = f"F{int(current_fov):03d}"
-        label_dir = Path(flat_files_dir) / "CellLabels"
-        mask_files = list(label_dir.glob(f"*{padded_fov}*.tif")) + list(
-            label_dir.glob(f"*{padded_fov}*.png")
-        )
-
-        if mask_files:
-            logger.info(
-                "Extracting boundaries and auto-aligning to global coordinate space..."
-            )
-
-            cache_file = out_dir / f"fov_{current_fov}_geometry_local_cache.pkl"
-
-            if cache_file.exists():
-                with open(cache_file, "rb") as f:
-                    cache_data = pickle.load(f)
-
-                for geom, centroid, lid in zip(
-                    cache_data["geometries"],
-                    cache_data["centroids"],
-                    cache_data["local_ids"],
+        # 3. Process Boundaries / Centroids
+        # --- A. PROSEG GEOMETRIES LOGIC ---
+        if proseg_gdf is not None and proseg_id_map:
+            for cid_str in valid_local_ids:
+                if (
+                    local_selected_cells is not None
+                    and cid_str not in local_selected_cells
                 ):
-                    if local_selected_cells is None or lid in local_selected_cells:
-                        unique_cell_id = f"{current_fov}_{lid}"
-                        c_type = cell_id_to_type.get(
-                            (str(current_fov), str(lid)), "Unknown"
-                        )
+                    continue
 
-                        all_geometries.append(geom)
-                        all_cell_coords.append(centroid)
-                        all_cell_ids.append(unique_cell_id)
-                        all_cell_types.append(c_type)
-                        all_boundary_types.append(c_type)
-            else:
-                mask_img = io.imread(mask_files[0])
-                props = measure.regionprops(mask_img)
+                # Fetch global integer index for this specific FOV/Cell combination
+                proseg_idx = proseg_id_map.get((str(current_fov), cid_str))
+                if proseg_idx is None:
+                    continue
 
-                raw_data = {}
-                matched_cx, matched_cy, matched_gx, matched_gy = [], [], [], []
+                # Extract shapely geometry
+                try:
+                    geom = proseg_gdf.loc[int(proseg_idx)].geometry
+                except KeyError:
+                    geom = proseg_gdf.loc[str(proseg_idx)].geometry
 
-                for prop in props:
-                    cid_str = str(prop.label)  # Local ID (e.g. "1")
+                if geom.geom_type == "MultiPolygon":
+                    geom = max(geom.geoms, key=lambda a: a.area)
+                if geom.geom_type != "Polygon":
+                    continue
+
+                poly_coords = np.array(geom.exterior.coords) * PIXEL_SIZE
+
+                # Fix orientation
+                x = poly_coords[:, 0]
+                y = poly_coords[:, 1]
+                signed_area = 0.5 * np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
+                if signed_area < 0:
+                    poly_coords = poly_coords[::-1]
+
+                gcx, gcy = np.mean(poly_coords[:, 0]), np.mean(poly_coords[:, 1])
+
+                unique_cell_id = f"{current_fov}_{cid_str}"
+                c_type = cell_id_to_type.get((str(current_fov), cid_str), "Unknown")
+
+                all_geometries.append(poly_coords)
+                all_cell_coords.append([gcx, gcy])
+                all_cell_ids.append(unique_cell_id)
+                all_cell_types.append(c_type)
+                all_boundary_types.append(c_type)
+
+        # --- B. ORIGINAL CSV LOGIC ---
+        elif df_poly is not None:
+            fov_poly = df_poly[df_poly["fov"].astype(str) == str(current_fov)]
+
+            if not fov_poly.empty:
+                for cid, group in fov_poly.groupby("cell_ID"):
+                    cid_str = str(cid)
+
                     if cid_str not in valid_local_ids:
                         continue
-
-                    cell_mask = np.pad(
-                        prop.image, pad_width=1, mode="constant", constant_values=False
-                    )
-                    contours = measure.find_contours(cell_mask, 0.5)
-                    if not contours:
+                    if (
+                        local_selected_cells is not None
+                        and cid_str not in local_selected_cells
+                    ):
                         continue
-                    contour = max(contours, key=len)
 
-                    min_r, min_c, _, _ = prop.bbox
-                    local_y = contour[:, 0] - 1 + min_r
-                    local_x = contour[:, 1] - 1 + min_c
-                    cx, cy = np.mean(local_x), np.mean(local_y)
-
-                    raw_data[cid_str] = {
-                        "local_x": local_x,
-                        "local_y": local_y,
-                        "cx": cx,
-                        "cy": cy,
-                    }
-
-                    if cid_str in global_centers.index:
-                        matched_cx.append(cx)
-                        matched_cy.append(cy)
-                        matched_gx.append(global_centers.loc[cid_str, "x_global_px"])
-                        matched_gy.append(global_centers.loc[cid_str, "y_global_px"])
-
-                if len(matched_cx) >= 3:
-                    corr_x = np.corrcoef(matched_cx, matched_gx)[0, 1]
-                    corr_y = np.corrcoef(matched_cy, matched_gy)[0, 1]
-                    flip_x = corr_x < 0 if not np.isnan(corr_x) else False
-                    flip_y = corr_y < 0 if not np.isnan(corr_y) else False
-
-                    ox = [
-                        gx + cx if flip_x else gx - cx
-                        for cx, gx in zip(matched_cx, matched_gx)
-                    ]
-                    oy = [
-                        gy + cy if flip_y else gy - cy
-                        for cy, gy in zip(matched_cy, matched_gy)
-                    ]
-                    fov_offset_x = np.median(ox)
-                    fov_offset_y = np.median(oy)
-                else:
-                    flip_x, flip_y, fov_offset_x, fov_offset_y = False, False, 0, 0
-                    logger.warning(
-                        f"FOV {current_fov}: Not enough matched cells. Using local coords."
+                    # Get polygon coordinates
+                    poly_coords = (
+                        group[["x_global_px", "y_global_px"]].values * PIXEL_SIZE
                     )
 
-                cache_geoms, cache_cents, cache_local_ids = [], [], []
-                (
-                    current_fov_geometries,
-                    current_fov_coords,
-                    current_fov_ids,
-                    current_fov_types,
-                ) = [], [], [], []
+                    try:
+                        poly = Polygon(poly_coords)
+                        if not poly.is_valid:
+                            poly = make_valid(poly)
 
-                for cid_str, data in raw_data.items():
-                    lx, ly, lcx, lcy = (
-                        data["local_x"],
-                        data["local_y"],
-                        data["cx"],
-                        data["cy"],
-                    )
+                            if poly.geom_type == "MultiPolygon":
+                                poly = max(poly.geoms, key=lambda a: a.area)
+                            elif poly.geom_type == "GeometryCollection":
+                                polys = [
+                                    geom
+                                    for geom in poly.geoms
+                                    if geom.geom_type == "Polygon"
+                                ]
+                                if not polys:
+                                    continue
+                                poly = max(polys, key=lambda a: a.area)
 
-                    global_x = (-lx if flip_x else lx) + fov_offset_x
-                    global_y = (-ly if flip_y else ly) + fov_offset_y
-                    poly_coords = np.column_stack((global_x, global_y))
+                        if poly.area <= 0:
+                            continue
 
-                    gcx = (-lcx if flip_x else lcx) + fov_offset_x
-                    gcy = (-lcy if flip_y else lcy) + fov_offset_y
+                        poly_coords = np.array(poly.exterior.coords)
 
-                    if not np.array_equal(poly_coords[0], poly_coords[-1]):
-                        poly_coords = np.vstack((poly_coords, poly_coords[0]))
+                        x = poly_coords[:, 0]
+                        y = poly_coords[:, 1]
+                        signed_area = 0.5 * np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
 
-                    if len(poly_coords) >= 3:
-                        cache_geoms.append(poly_coords)
-                        cache_cents.append([gcx, gcy])
-                        cache_local_ids.append(cid_str)
+                        if signed_area < 0:
+                            poly_coords = poly_coords[::-1]
 
-                        if (
-                            local_selected_cells is None
-                            or cid_str in local_selected_cells
-                        ):
-                            unique_cell_id = f"{current_fov}_{cid_str}"
-                            c_type = cell_id_to_type.get(
-                                (str(current_fov), str(cid_str)), "Unknown"
-                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"Skipping corrupted polygon for cell {cid_str}: {e}"
+                        )
+                        continue
 
-                            current_fov_geometries.append(poly_coords)
-                            current_fov_coords.append([gcx, gcy])
-                            current_fov_ids.append(unique_cell_id)
-                            current_fov_types.append(c_type)
+                    gcx, gcy = np.mean(poly_coords[:, 0]), np.mean(poly_coords[:, 1])
 
-                with open(cache_file, "wb") as f:
-                    pickle.dump(
-                        {
-                            "geometries": cache_geoms,
-                            "centroids": cache_cents,
-                            "local_ids": cache_local_ids,
-                        },
-                        f,
-                    )
+                    unique_cell_id = f"{current_fov}_{cid_str}"
+                    c_type = cell_id_to_type.get((str(current_fov), cid_str), "Unknown")
 
-                if current_fov_geometries:
-                    all_geometries.extend(current_fov_geometries)
-                    all_cell_coords.extend(current_fov_coords)
-                    all_cell_ids.extend(current_fov_ids)
-                    all_cell_types.extend(current_fov_types)
-                    all_boundary_types.extend(current_fov_types)
+                    all_geometries.append(poly_coords)
+                    all_cell_coords.append([gcx, gcy])
+                    all_cell_ids.append(unique_cell_id)
+                    all_cell_types.append(c_type)
+                    all_boundary_types.append(c_type)
+        else:
+            # FALLBACK: If polygons missing, use pure transcript point centroids
+            logger.warning(
+                f"FOV {current_fov}: Using point centroids as boundaries are missing."
+            )
+
+            valid_pts = df_all_pts[df_all_pts["cell_ID"].astype(str) != "0"].copy()
+            valid_pts["cell_ID_str"] = (
+                valid_pts["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
+            )
+            global_centers = (
+                valid_pts.groupby("cell_ID_str")[["x_global_px", "y_global_px"]].mean()
+                * PIXEL_SIZE
+            )
+
+            for cid_str in valid_local_ids:
+                if cid_str in global_centers.index:
+                    if local_selected_cells is None or cid_str in local_selected_cells:
+                        unique_cell_id = f"{current_fov}_{cid_str}"
+                        c_type = cell_id_to_type.get(
+                            (str(current_fov), str(cid_str)), "Unknown"
+                        )
+
+                        gcx = global_centers.loc[cid_str, "x_global_px"]
+                        gcy = global_centers.loc[cid_str, "y_global_px"]
+
+                        all_cell_coords.append([gcx, gcy])
+                        all_cell_ids.append(unique_cell_id)
+                        all_cell_types.append(c_type)
 
     logger.info("Adding collected objects to MuSpAn domain...")
     qTrans, qCells, qBoundaries = None, None, None
@@ -303,10 +358,18 @@ def CosMx_to_domain(
 
 
 def cosmx_initial_plotting(
-    domain, qTrans, qCells, qBoundaries, cluster_labels, out_dir
+    domain, qTrans, qCells, qBoundaries, cluster_labels, out_dir, color_dict=None
 ):
-    # Plotting (CosMx)
+    if color_dict is not None:
+        try:
+            domain.update_colors(
+                color_dict, colors_to_update="labels", label_name=cluster_labels
+            )
+            logger.info("Successfully synced Squidpy colors to MuSpAn CosMx Domain.")
+        except Exception as e:
+            logger.warning(f"Failed to apply custom colors to MuSpAn domain: {e}")
 
+    # Plotting (CosMx)
     fig, ax = plt.subplots(figsize=(20, 10), nrows=1, ncols=2)
 
     # Plot transcripts
@@ -330,18 +393,16 @@ def cosmx_initial_plotting(
             ax=ax[1],
             objects_to_plot=qBoundaries,
         )
-
-    # Plot cell centroids
-    if qCells is not None:
+        ax[1].set_title(f"Cell Boundaries by {cluster_labels}")
+    elif qCells is not None:
         ms.visualise.visualise(
             domain,
+            color_by=("label", cluster_labels),
             ax=ax[1],
             objects_to_plot=qCells,
-            marker_size=2,
-            color_by=("constant", "#000000"),
+            marker_size=20,
         )
-
-    ax[1].set_title(f"Cell Boundaries by {cluster_labels}")
+        ax[1].set_title(f"Cell Centroids by {cluster_labels} (No Boundaries)")
 
     plt.tight_layout()
     plt.savefig(out_dir / "muspan_cosmx_visualization.png", dpi=300)

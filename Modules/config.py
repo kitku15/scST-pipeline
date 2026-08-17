@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 from pathlib import Path
 
 # 1. Compatibility handling
@@ -35,7 +35,7 @@ analysis_dir.mkdir(parents=True, exist_ok=True)
 
 def get_module(index):
     """Returns the name and dir for a module starting with 'n_'"""
-    key = next((k for k in MODULES.keys() if k.startswith(f"{index}_")), None)
+    key = next((k for k in MODULES if k.startswith(f"{index}_")), None)
 
     if key:
         return MODULES[key]["name"], MODULES[key]["dir"]

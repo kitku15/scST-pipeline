@@ -1,8 +1,8 @@
 # tests/test_spatial.py
-import scanpy as sc
 import numpy as np
-from ViewImages import run_view_images
+import scanpy as sc
 from SpatialStat import run_spatial_statistics
+from ViewImages import run_view_images
 
 
 def test_view_images(dummy_adata, tmp_path):

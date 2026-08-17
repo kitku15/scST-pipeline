@@ -1,11 +1,11 @@
 """MuSpan handling module."""
 
-import warnings
 import logging
+import warnings
 from logging import getLogger
 from pathlib import Path
-import scanpy as sc
 
+import scanpy as sc
 import spatialdata as sd
 from MuSpan_CosMxHandling import CosMx_to_domain, cosmx_initial_plotting
 from MuSpan_XeniumHandling import xenium_initial_plotting
@@ -26,7 +26,7 @@ logger = getLogger(__name__)
 def run_muspan(
     dataset_type: str,
     module_dir: str,
-    prev_module_dir: str,
+    input_adata_path: str,
     domain_name: str,
     cluster_labels: str,  # chosen cluster
     transcripts_of_interest: list = None,
@@ -34,8 +34,10 @@ def run_muspan(
     # CosMx specific kwargs
     zarr_path: str = None,
     flat_files_dir: str = None,
+    proseg_zarr_path: str = None,
     # Xenium specific kwargs
     xenium_dir: str = None,
+    color_dict: dict = None,
 ):
     if dataset_type not in ["CosMx", "Xenium"]:
         print(dataset_type)
@@ -45,9 +47,9 @@ def run_muspan(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Load AnnData
-    adata_path = Path(prev_module_dir) / "adata.h5ad"
-    logger.info(f"Loading Annotated AnnData from {adata_path}...")
-    adata = sc.read_h5ad(adata_path)
+    input_adata_path = Path(input_adata_path)
+    logger.info(f"Loading Annotated AnnData from {input_adata_path}...")
+    adata = sc.read_h5ad(input_adata_path)
 
     # Make CosMx domain, and a figure with 2 plots
     # Selected transcripts (left)
@@ -67,11 +69,12 @@ def run_muspan(
             cell_selection_csv,
             flat_files_dir,
             out_dir,
+            proseg_zarr_path=proseg_zarr_path,
         )
         # Make cosmx figure
         logger.info(f"Visualizing the MuSpAn domain: {domain_name}")
         cosmx_initial_plotting(
-            domain, qTrans, qCells, qBoundaries, cluster_labels, out_dir
+            domain, qTrans, qCells, qBoundaries, cluster_labels, out_dir, color_dict
         )
 
     # Make Xenium domain, and a figure
@@ -90,7 +93,7 @@ def run_muspan(
             exclude_no_nuclei_cells=True,
         )
         # Make xenium figure
-        xenium_initial_plotting(adata, domain, cluster_labels, out_dir)
+        xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict)
 
     # Save domain (do we need to this takes ages?)=========
     # ms.io.save_domain(

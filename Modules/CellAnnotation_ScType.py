@@ -3,8 +3,8 @@
 import warnings
 from logging import getLogger
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sctype_py import sctype_score
 
 warnings.filterwarnings("ignore")

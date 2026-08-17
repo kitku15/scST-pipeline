@@ -1,7 +1,8 @@
 # tests/test_qc.py
+from unittest.mock import MagicMock, patch
+
 import scanpy as sc
 from QualityControl import run_qc
-from unittest.mock import patch, MagicMock
 
 
 @patch("QualityControl.sd.read_zarr")

@@ -1,8 +1,9 @@
 """MuSpan Xenium handling module."""
 
-import warnings
 import logging
+import warnings
 from logging import getLogger
+
 import matplotlib.pyplot as plt
 
 try:
@@ -43,10 +44,19 @@ def map_cell_types_to_domain_xenium(adata, domain, adata_cell_id, cluster_labels
     return domain
 
 
-def xenium_initial_plotting(adata, domain, cluster_labels, out_dir):
+def xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict=None):
     # Map labels
     cellid_col = "cell_id"
     domain = map_cell_types_to_domain_xenium(adata, domain, cellid_col, cluster_labels)
+
+    if color_dict is not None:
+        try:
+            domain.update_colors(
+                color_dict, colors_to_update="labels", label_name=cluster_labels
+            )
+            logger.info("Successfully synced Squidpy colors to MuSpAn Xenium Domain.")
+        except Exception as e:
+            logger.warning(f"Failed to apply custom colors to MuSpAn domain: {e}")
 
     # Queries
     qCells = ms.query.query(domain, ("Collection",), "is", "Cell boundaries")

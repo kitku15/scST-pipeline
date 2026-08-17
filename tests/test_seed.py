@@ -1,8 +1,9 @@
 # tests/test_seed.py
+import os
 import random
+
 import numpy as np
 import torch
-import os
 from seed import seed_everything
 
 

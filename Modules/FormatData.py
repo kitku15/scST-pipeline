@@ -1,12 +1,12 @@
 """Module for formatting CosMx/Xenium data into Zarr format."""
 
+import gc
+import os
 import warnings
 from logging import getLogger
+from pathlib import Path
 
 from spatialdata_io import cosmx, xenium
-from pathlib import Path
-import os
-import gc
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)

@@ -4,11 +4,12 @@ import matplotlib
 
 matplotlib.use("Agg")  # Forces matplotlib to run without opening GUI windows
 import os
-import pytest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+import pytest
 import scanpy as sc
-from pathlib import Path
 
 # ==========================================
 # 1. PRE-TEST SETUP (Runs before imports)

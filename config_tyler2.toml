@@ -1,0 +1,27 @@
+log_level = "INFO"
+seed = 21122023
+
+[project]
+analysis_name = "tyler_proseg" 
+slide_name = "Slide_2" 
+data_type = "CosMx"
+
+[io]
+base_dir = "."
+dataset_id = "TylerWooldridgeSlide2"
+dataset_dir = "data/tyler_2"
+zarr_dir = "data/tyler_2.zarr"
+
+[pipeline]
+modules = ["0_format", "1_QualityControl"]
+
+[modules.QualityControl]
+min_counts = 50
+min_cells = 5
+min_genes = 40 
+min_area = 5 
+max_area = 100
+fov_metadata_path = "data/tyler_2/TylerWooldridgeSlide2_fov_cohort.csv"
+proseg_zarr_path = "data/tyler2_proseg.zarr" 
+proseg_cell_id_col = "original_cell_id"
+original_cell_id_col = "cell"  

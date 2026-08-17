@@ -1,11 +1,12 @@
-"""Muspan module - spatial statistics and graph analysis."""
+"""Muspan module - Shapes analysis."""
 
 import warnings
 from logging import getLogger
-
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 
 warnings.filterwarnings("ignore")
@@ -178,7 +179,7 @@ def ms_PointstoShape(domain, chosen_cluster, cell_type):
     # 1. Query the specific Leiden cluster (replace '1' with your target cluster)
     cluster_cells = ms.query.query(domain, ("label", chosen_cluster), "is", cell_type)
 
-    # 2. Query to ensure we are only looking at Cell centroids (Fixed syntax)
+    # 2. Query to ensure we are only looking at Cell centroids
     centroids = ms.query.query(domain, ("collection",), "is", "Cell centroids")
 
     # 3. Combine them so you only get Cell centroids that belong to cluster '1'
@@ -270,7 +271,89 @@ def run_muspan_shapes(module_dir, domain, chosen_cluster, selected_celltypes):
     plt.savefig(plot_save)
     logger.info(f"shape orientation plot successfully saved as {plot_save}")
 
-    # ms_PointstoShape(domain, chosen_cluster, cell_type="1")
+    # Export Morphometrics to CSV
+    logger.info("Extracting shape metrics into a CSV for web visualization...")
+
+    try:
+        # 1. Grab the "Cell ID" labels directly (Bypasses collection queries!)
+        # This returns numpy arrays which are safely iterable
+        cell_ids, cell_id_obj_indices = ms.query.get_labels(domain, "Cell ID")
+        cell_id_dict = dict(zip(list(cell_id_obj_indices), list(cell_ids)))
+
+        # 2. Grab the "Area (µm²)" labels to identify our boundaries
+        # Because Area is only calculated on boundaries, this perfectly isolates them
+        areas, boundary_indices = ms.query.get_labels(domain, "Area (µm²)")
+        boundary_list = list(boundary_indices)
+
+        logger.info(
+            f"DEBUG: Found {len(cell_id_dict)} Cell IDs and {len(boundary_list)} Boundaries."
+        )
+
+        # 3. Create DataFrame
+        df_morph = pd.DataFrame({"boundary_id": boundary_list})
+
+        # 4. Safely map Cell IDs to Boundaries
+        # CASE A: Xenium (The boundaries themselves hold the Cell ID string)
+        if len(boundary_list) > 0 and boundary_list[0] in cell_id_dict:
+            logger.info("DEBUG: Mapping Cell IDs directly from boundaries.")
+            df_morph["Cell_ID"] = df_morph["boundary_id"].map(cell_id_dict)
+
+        # CASE B: CosMx (The centroids hold the Cell ID string, but they are generated 1:1)
+        elif len(boundary_list) == len(cell_id_dict):
+            logger.info(
+                "DEBUG: Mapping Cell IDs via 1:1 order alignment (Centroids to Boundaries)."
+            )
+            # Sort the internal IDs to guarantee perfect 1:1 alignment
+            sorted_bounds = sorted(boundary_list)
+            sorted_cents = sorted(list(cell_id_dict.keys()))
+            b_to_c = dict(zip(sorted_bounds, sorted_cents))
+
+            df_morph["Cell_ID"] = df_morph["boundary_id"].map(
+                lambda b: cell_id_dict.get(b_to_c.get(b))
+            )
+        else:
+            logger.warning(
+                "DEBUG: Mismatch between number of Cell IDs and Boundaries. Cannot map safely!"
+            )
+            df_morph["Cell_ID"] = None
+
+        # 5. Extract all target metrics
+        target_labels = [
+            "Area (µm²)",
+            "Perimeter (µm)",
+            "Convexity",
+            "Circularity",
+            "Principle axis angle (rad)",
+        ]
+
+        for label in target_labels:
+            if label in domain.labels:
+                vals, idxs = ms.query.get_labels(domain, label)
+                metric_dict = dict(zip(list(idxs), list(vals)))
+                df_morph[label] = df_morph["boundary_id"].map(metric_dict)
+
+        # 5.5 Extract the Cluster labels
+        # The variable 'chosen_cluster' is passed into this function (e.g., 'leiden_n10_r0.1')
+        if chosen_cluster in domain.labels:
+            cluster_vals, cluster_idxs = ms.query.get_labels(domain, chosen_cluster)
+            cluster_dict = dict(zip(list(cluster_idxs), list(cluster_vals)))
+            df_morph["Cluster"] = df_morph["boundary_id"].map(cluster_dict)
+        else:
+            logger.warning(
+                f"Cluster label '{chosen_cluster}' not found in domain. Cells will be marked 'Unknown'."
+            )
+            df_morph["Cluster"] = "Unknown"
+
+        # 6. Clean up and Save
+        df_morph = df_morph.dropna(subset=["Cell_ID"])
+        df_morph = df_morph.drop(columns=["boundary_id"])
+
+        csv_path = out_dir / "morphometrics.csv"
+        df_morph.to_csv(csv_path, index=False)
+        logger.info(f"Successfully exported morphometrics to {csv_path}")
+
+    except Exception as e:
+        logger.warning(f"Failed to export Morphometrics CSV: {e}")
 
 
 if __name__ == "__main__":

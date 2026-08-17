@@ -1,12 +1,13 @@
 """Generates selection CSV file based on user criteria"""
 
-import pandas as pd
-import numpy as np
-import warnings
 import logging
+import warnings
 from logging import getLogger
-import scanpy as sc
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import scanpy as sc
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
@@ -15,7 +16,7 @@ logger = getLogger(__name__)
 
 def cosmx_csv(
     module_dir,
-    prev_module_dir,
+    input_adata_path,
     selection_name,
     cluster_col,
     selected_fovs,
@@ -26,9 +27,9 @@ def cosmx_csv(
     cells that match the selected fovs and cell types (clusters).
     For CosMx data.
     """
-    adata_path = Path(prev_module_dir) / "adata.h5ad"
-    logger.info(f"Loading Annotated AnnData from {adata_path}...")
-    adata = sc.read_h5ad(adata_path)
+    input_adata_path = Path(input_adata_path)
+    logger.info(f"Loading Annotated AnnData from {input_adata_path}...")
+    adata = sc.read_h5ad(input_adata_path)
 
     # Create selection DataFrame
     df_selection = pd.DataFrame(
@@ -63,7 +64,7 @@ def cosmx_csv(
 
 def xenium_csv(
     module_dir,
-    prev_module_dir,
+    input_adata_path,
     selection_name,
     genes_of_interest,
     cluster_col,
@@ -83,9 +84,9 @@ def xenium_csv(
         Path to the CSV file containing Box_ID, x_min, x_max, y_min, y_max coordinates.
     """
 
-    adata_path = Path(prev_module_dir) / "adata.h5ad"
-    logger.info(f"Loading Annotated AnnData from {adata_path}...")
-    adata = sc.read_h5ad(adata_path)
+    input_adata_path = Path(input_adata_path)
+    logger.info(f"Loading Annotated AnnData from {input_adata_path}...")
+    adata = sc.read_h5ad(input_adata_path)
 
     # Optional Spatial filtering based on Box IDs and Grid CSV
     if box_ids is not None and grid_csv_path is not None:

@@ -1,10 +1,11 @@
-import numpy as np
-import pandas as pd
-from sklearn.preprocessing import scale
-import requests
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+
+import numpy as np
+import pandas as pd
+import requests
 from requests.adapters import HTTPAdapter
+from sklearn.preprocessing import scale
 from urllib3.util.retry import Retry
 
 
