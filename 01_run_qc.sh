@@ -1,6 +1,6 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=1:mem=8gb
-#PBS -l walltime=00:10:00
+#PBS -l select=1:ncpus=4:mem=64gb
+#PBS -l walltime=04:00:00
 #PBS -N run_qc
 #PBS -J 1-4
 #PBS -j oe
@@ -57,6 +57,6 @@ echo "Running Spatial Pipeline: Format & QC for Slide ${PBS_ARRAY_INDEX}" >&2
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" --modules 1
+  "$CONFIG_NAME" --modules 0 1
 
 echo "QC finished for Slide ${PBS_ARRAY_INDEX}!" >&2

@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l select=1:ncpus=32:mem=512gb
-#PBS -l walltime=01:00:00
+#PBS -l walltime=48:00:00
 #PBS -N run_ds
 #PBS -j oe
 
@@ -49,5 +49,5 @@ echo "Running Downstream Spatial Pipeline: Merge -> Analysis" >&2
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" --modules 8c 
+  "$CONFIG_NAME" --modules 1b 2 3 4 5 6 7 8 8b 8c 9 10
 echo "Pipeline finished!" >&2 
