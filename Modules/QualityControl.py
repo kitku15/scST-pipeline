@@ -167,11 +167,12 @@ def run_qc(
             meta_df["fov"] = meta_df["fov"].astype(str)
             adata.obs["fov"] = adata.obs["fov"].astype(str)
             meta_df.set_index("fov", inplace=True)
-            cols_to_map = ["DiseaseType", "TreatmentResponse", "sample_id"]
-            for col in cols_to_map:
-                if col in meta_df.columns:
-                    adata.obs[col] = adata.obs["fov"].map(meta_df[col])
-            logger.info(f"Successfully mapped metadata columns: {cols_to_map}")
+
+            # map all collumns from meta_df to adata.obs based on 'fov'
+            for col in meta_df.columns:
+                adata.obs[col] = adata.obs["fov"].map(meta_df[col])
+
+            logger.info(f"Successfully mapped metadata columns: {list(meta_df.columns)}")
 
     # Check if the requested batch/sample keys exist. If not, create them.
     for key in [batch_key, sample_key]:

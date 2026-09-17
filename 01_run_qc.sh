@@ -8,7 +8,17 @@
 set -euo pipefail
 cd "$PBS_O_WORKDIR"
 
-NUM_SLIDES=${NUM_SLIDES:-4}
+CONFIG_NAME="configs/config_pCosMx.toml"
+SIF_IMAGE="$(readlink -f kitku.sif)"
+
+[[ -f "$SIF_IMAGE" ]] || { echo "Missing SIF image: $SIF_IMAGE" >&2; exit 1; }
+[[ -f "$CONFIG_NAME" ]] || { echo "Missing config: $CONFIG_NAME" >&2; exit 1; }
+
+# get base directory from the TOML file
+BASE_DIR=$(grep -oP 'base_raw_dir\s*=\s*"\K[^"]+' "$CONFIG_NAME")
+
+# Count how many dataset directories exist inside the base directory
+NUM_SLIDES=$(find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
 
 # If this job's array index is greater than the slides we actually have, exit immediately
 if [ "$PBS_ARRAY_INDEX" -gt "$NUM_SLIDES" ]; then
@@ -44,19 +54,11 @@ cleanup_apptainer_tmp() {
   case "$workdir" in "$base"/*) rm -rf --one-file-system "$workdir" || true ;; esac
 }
 trap cleanup_apptainer_tmp EXIT
-
-# DYNAMICALLY GRAB THE CONFIG BASED ON THE ARRAY INDEX (1, 2, 3, or 4)
-CONFIG_NAME="config_tyler${PBS_ARRAY_INDEX}.toml" 
-SIF_IMAGE="$(readlink -f kitku.sif)"
-
-[[ -f "$SIF_IMAGE" ]] || { echo "Missing SIF image: $SIF_IMAGE" >&2; exit 1; }
-[[ -f "$CONFIG_NAME" ]] || { echo "Missing config: $CONFIG_NAME" >&2; exit 1; }
-
 echo "Running Spatial Pipeline: Format & QC for Slide ${PBS_ARRAY_INDEX}" >&2
 
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" --modules 0 1
+  "$CONFIG_NAME" --modules 0 1 --sample_index "$PBS_ARRAY_INDEX"
 
 echo "QC finished for Slide ${PBS_ARRAY_INDEX}!" >&2

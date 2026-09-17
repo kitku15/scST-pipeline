@@ -44,8 +44,6 @@ SIF_IMAGE="$(readlink -f kitku.sif)"
 
 echo "Running Downstream Spatial Pipeline: Merge -> Analysis" >&2
 
-# Pass 1b through 8
-# Slide_2_IFX_NR_2 Slide_4_IFX_NR_2
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \

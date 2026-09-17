@@ -120,8 +120,41 @@ if __name__ == "__main__":
     # Global settings
     analysis_name = settings["project"].get("analysis_name", "my_analysis")
     data_type = settings["project"]["data_type"]
-    dataset_path = settings["io"].get("dataset_dir", None)
-    zarr_path = settings["io"].get("zarr_dir", None)
+
+    # Determine dataset path and slide name based on batch mode or single-slide mode
+    base_raw_dir = settings["io"].get("base_raw_dir", None)
+    
+    if base_raw_dir and args.sample_index is not None:
+        base_dir_path = Path(base_raw_dir)
+        # Get all subdirectories, sorted alphabetically (ignores files like .tar.gz)
+        dataset_folders = sorted([d for d in base_dir_path.iterdir() if d.is_dir()])
+        
+        # Array index is 1-based, Python lists are 0-based
+        idx = args.sample_index - 1
+        
+        if idx >= len(dataset_folders):
+            logger.info(f"Index {args.sample_index} exceeds available folders. Exiting gracefully.")
+            sys.exit(0)
+            
+        selected_slide_dir = dataset_folders[idx]
+        slide_name = selected_slide_dir.name
+        
+        # Override settings for downstream modules
+        settings["project"]["slide_name"] = slide_name
+        settings["io"]["dataset_id"] = slide_name
+        dataset_path = str(selected_slide_dir)
+        
+        # Dynamically set the zarr path based on the folder name
+        base_zarr_dir = settings["io"].get("base_zarr_dir", "data_zarrs")
+        Path(base_zarr_dir).mkdir(parents=True, exist_ok=True)
+        zarr_path = str(Path(base_zarr_dir) / f"{slide_name}.zarr")
+        
+        logger.info(f"BATCH MODE: Targeted folder '{slide_name}'.")
+    else:
+        # Fallback to single-slide logic if base_raw_dir isn't used
+        dataset_path = settings["io"].get("dataset_dir", None)
+        zarr_path = settings["io"].get("zarr_dir", None)
+        slide_name = settings["project"].get("slide_name", None)
 
     # Batch and Sample key
     batch_key = settings["project"].get("batch_key", None)
@@ -215,6 +248,16 @@ if __name__ == "__main__":
                         module_1_dir.mkdir(parents=True, exist_ok=True)
 
                     qc_settings = settings["modules"]["QualityControl"]
+
+                    # replace {slide_name} placeholder
+                    fov_path = qc_settings.get("fov_metadata_path", None)
+                    if fov_path and "{slide_name}" in fov_path:
+                        fov_path = fov_path.format(slide_name=slide_name)
+                        
+                    proseg_path = qc_settings.get("proseg_zarr_path", None)
+                    if proseg_path and "{slide_name}" in proseg_path:
+                        proseg_path = proseg_path.format(slide_name=slide_name)
+
                     run_qc(
                         data_type=data_type,
                         module_dir=module_1_dir,
@@ -227,8 +270,8 @@ if __name__ == "__main__":
                         min_dapi=qc_settings.get("min_dapi", None),
                         batch_key=batch_key,
                         sample_key=sample_key,
-                        fov_metadata_path=qc_settings.get("fov_metadata_path", None),
-                        proseg_zarr_path=qc_settings.get("proseg_zarr_path", None),
+                        fov_metadata_path=fov_path,
+                        proseg_zarr_path=proseg_path,
                         proseg_cell_id_col=qc_settings.get(
                             "proseg_cell_id_col", "original_cell_id"
                         ),
@@ -242,11 +285,31 @@ if __name__ == "__main__":
                 with tracker.measure("Module 1b: Merge Data"):
                     logger.info("Running Data Merging...")
                     module_1b_name, module_1b_dir = get_module("1b")
-                    merge_settings = settings["modules"]["MergeData"]
+                    _, module_1_dir = get_module(1)
+                    
+                    merge_settings = settings["modules"].get("MergeData", {})
+
+                    # Try to get them from config, otherwise AUTO-DISCOVER them
+                    input_files = merge_settings.get("input_files", [])
+                    slide_names = merge_settings.get("slide_names", [])
+
+                    if not input_files:
+                        logger.info(f"Auto-discovering QC'd datasets in {module_1_dir}...")
+                        # Find all adata.h5ad files in the subdirectories of Module 1
+                        found_files = sorted(list(module_1_dir.glob("*/adata.h5ad")))
+                        
+                        if not found_files:
+                            raise FileNotFoundError(f"No QC'd adata.h5ad files found in {module_1_dir}. Did Module 1 finish?")
+                            
+                        input_files = [str(f) for f in found_files]
+                        # The slide name is the name of the folder containing the adata.h5ad
+                        slide_names = [f.parent.name for f in found_files]
+                        
+                        logger.info(f"Found {len(input_files)} datasets to merge: {slide_names}")
 
                     run_merge(
-                        input_files=merge_settings["input_files"],
-                        slide_names=merge_settings["slide_names"],
+                        input_files=input_files,
+                        slide_names=slide_names,
                         module_dir=module_1b_dir,
                     )
 
