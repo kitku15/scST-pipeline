@@ -15,6 +15,72 @@ warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
+def plot_embedding_with_legend(adata, embedding_key, color_col, module_dir):
+    """Plot an embedding colored by a single column with the legend outside the axes."""
+    is_categorical = color_col in adata.obs.columns and not pd.api.types.is_numeric_dtype(
+        adata.obs[color_col]
+    )
+
+    if not is_categorical:
+        fig, ax = plt.subplots(figsize=(7, 6), facecolor="white")
+        sc.pl.embedding(
+            adata,
+            basis=embedding_key,
+            color=color_col,
+            ax=ax,
+            show=False,
+            frameon=False,
+        )
+    else:
+        n_categories = adata.obs[color_col].astype("category").cat.categories.size
+
+        # Keep at most ~25 legend rows; add legend columns beyond that
+        max_rows = 25
+        ncol = max(1, math.ceil(n_categories / max_rows))
+        n_rows = math.ceil(n_categories / ncol)
+        fontsize = 8 if n_categories > 30 else 10
+
+        # Legend sits outside the axes; bbox_inches="tight" expands the saved
+        # image to include it. Only grow the height for very long legends.
+        side = max(6, n_rows * 0.28)
+        fig, ax = plt.subplots(figsize=(side, side), facecolor="white")
+
+        sc.pl.embedding(
+            adata,
+            basis=embedding_key,
+            color=color_col,
+            ax=ax,
+            show=False,
+            frameon=False,
+            legend_loc=None,
+        )
+
+        categories = adata.obs[color_col].cat.categories
+        colors = adata.uns.get(f"{color_col}_colors", [])
+        handles = [
+            plt.Line2D(
+                [], [], marker="o", linestyle="", color=color, markersize=6, label=cat
+            )
+            for cat, color in zip(categories, colors)
+        ]
+        ax.legend(
+            handles=handles,
+            loc="center left",
+            bbox_to_anchor=(1.02, 0.5),
+            ncol=ncol,
+            frameon=False,
+            fontsize=fontsize,
+            title=color_col,
+            title_fontsize=fontsize + 1,
+            borderaxespad=0,
+        )
+
+    umap_out = module_dir / f"embedding_{embedding_key}_{color_col}.png"
+    fig.savefig(umap_out, dpi=300, facecolor="white", bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Saved embedding plot to {umap_out}")
+
+
 def run_view_images(
     data_type,
     input_adata_path,
@@ -47,25 +113,21 @@ def run_view_images(
     adata = sc.read_h5ad(input_adata_path)
 
     if embedding_key in adata.obsm:
-        logger.info(
-            f"Plotting embedding: {embedding_key} colored by {umap_color_columns}"
-        )
+        if umap_color_columns is None:
+            umap_color_columns = []
+        elif isinstance(umap_color_columns, str):
+            umap_color_columns = [umap_color_columns]
 
-        # We use scanpy's embedding plot which handles a list of colors automatically
-        # by creating a grid of subplots.
-        sc.pl.embedding(
-            adata,
-            basis=embedding_key,
-            color=umap_color_columns,
-            show=False,
-            frameon=False,
-            wspace=0.3,
-        )
+        # One figure per color column so each legend has room to fit
+        for color_col in umap_color_columns:
+            if color_col not in adata.obs.columns and color_col not in adata.var_names:
+                logger.warning(
+                    f"'{color_col}' not found in adata.obs or adata.var_names. Skipping."
+                )
+                continue
 
-        umap_out = module_dir / f"embedding_{embedding_key}.png"
-        plt.savefig(umap_out, dpi=300, bbox_inches="tight")
-        plt.close()
-        logger.info(f"Saved embedding plot to {umap_out}")
+            logger.info(f"Plotting embedding: {embedding_key} colored by {color_col}")
+            plot_embedding_with_legend(adata, embedding_key, color_col, module_dir)
     else:
         logger.warning(
             f"Embedding '{embedding_key}' not found in adata.obsm. Skipping UMAP plot."

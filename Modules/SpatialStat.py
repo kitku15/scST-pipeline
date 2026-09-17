@@ -62,7 +62,21 @@ def run_spatial_statistics(
     for sample in adata.obs[sample_key].unique():
         logger.info(f"--- Processing Spatial Statistics for Sample: {sample} ---")
 
-        adata_sample = adata[adata.obs[sample_key] == sample].copy()
+        # Cells without a label (e.g. unmatched in a transferred annotation) are
+        # NaN in cluster_name, which squidpy cannot handle
+        in_sample = adata.obs[sample_key] == sample
+        labelled = in_sample & adata.obs[cluster_name].notna()
+        n_unlabelled = int(in_sample.sum() - labelled.sum())
+        if n_unlabelled:
+            logger.warning(
+                f"Excluding {n_unlabelled:,} / {int(in_sample.sum()):,} cells with no "
+                f"'{cluster_name}' label from {sample}."
+            )
+        if labelled.sum() == 0:
+            logger.warning(f"No labelled cells in {sample}. Skipping sample.")
+            continue
+
+        adata_sample = adata[labelled].copy()
         sample_dir = module_dir / sample
         sample_dir.mkdir(exist_ok=True)
 
