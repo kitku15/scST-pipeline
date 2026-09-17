@@ -1,0 +1,201 @@
+log_level = "INFO"
+seed = 21122023
+
+[project]
+analysis_name = "pCosMx"  
+data_type = "CosMx"
+batch_key = "slide_id" 
+sample_key = "sample_id"
+
+[io]
+base_dir = "."
+
+[pipeline]
+modules = [
+    "1_QualityControl",
+    "1b_MergeData",
+    "2_DimensionReduction",
+    "3_Annotate",
+    "4_ViewImages",
+    "5_SpatialStat",
+    "6_MuSpan",
+    "7_Decoupler",
+    "8_Cellphonedb",
+    "8b_LIANA",
+    "8c_LIANA_Causal",
+    "9_DEAnalysis",
+    "10_WebVis",
+]
+
+[modules.MergeData]
+# EMPTY! __main__.py will automatically find all folders inside analysis_pCosMx/1_QualityControl/
+
+[modules.DimensionReduction]
+# STANDARD SCANPY PIPELINE (No scvi-tools)
+use_scviva = false
+run_pca = true
+n_comps = 50     
+umap_latent = "X_pca"
+n_neighbors = [15, 30]                    
+resolution = [0.5, 1.0]                
+cluster_name = "leidenpca"
+
+# Keep these in case you turn scVIVA back on later
+scviva_layer = "counts"
+scviva_spatial_knn = 10
+scviva_epochs = 400
+scvi_epochs = 400
+
+[modules.Annotate]
+chosen_cluster = "leidenpca_n30_r0.5" # Just an example, update based on output of Module 2
+ScType_anno = false
+CellTypist_anno = false
+CellTypist_mode = "one"
+CellTypist_train = false
+
+[modules.ViewImages]
+chosen_cluster = "Final_Annotation"
+gene_list = ["PIGR", "KRT8", "IGKC", "HLA-DRA", "LYZ", "IGHA1"]
+embedding_key = "X_umap_n30_X_scANVI"
+umap_color_columns = ["slide_id", "sample_id", "TreatmentResponse", "DiseaseType", "Final_Annotation"]
+
+[modules.SpatialStat]
+chosen_cluster = "Final_Annotation"
+condition_key = "TreatmentResponse"  # column in adata.obs with your conditions
+reference_condition = "Healthy"  # The baseline condition to subtract from others
+
+[modules.MuSpan]
+condition_key = "TreatmentResponse"
+reference_condition = "Healthy"
+chosen_cluster = "Final_Annotation"
+transcripts = ["HLA-DRB", "KRT8", "TMSB4X", "TFF3", "IGHA1"]
+min_edge_distance = 0
+max_edge_distance = 10
+distance_list = [1, 3, 5]
+min_edge_distance_shape = 0
+max_edge_distance_shape = 1
+k_list = [2, 5, 10, 15]
+
+selection_names = ["Whole_Sample"]
+# selection_names = ["myeloid_ulcer", "submucosal_remodelling"]
+# selection_names = ["stromal_core", "tertiary_lymphoid"]
+
+cell_types = ["Macrophage", "DN/gdT cell"]
+
+cellboundary_label = 'Cell boundaries' 
+max_distance = 2
+network_celltypes = ["Macrophage", "Monocyte", "Plasma cell", "B cell", "CD8 T cell", "CD4 T cell",  "DN/gdT cell", "NK cell", "Neutrophil", "Mast Cell", "Dendritic Cell"]
+
+[modules.MuSpan.selected_fovs]
+
+"Slide_1_CPIc_1" = ["2"]
+"Slide_1_Healthy_1" = ["9"]
+"Slide_1_IFX_NR_1" = ["17"]
+"Slide_1_IFX_NR_2" = ["21"]
+"Slide_1_IFX_R_1" = ["12"]
+"Slide_1_IFX_R_2" = ["28"]
+
+"Slide_2_CPIc_1" = ["2"]
+"Slide_2_Healthy_1" = ["11"]
+"Slide_2_IFX_NR_1" = ["28"]
+"Slide_2_IFX_NR_2" = ["59", "60"]
+"Slide_2_IFX_R_1" = ["48"]
+"Slide_2_IFX_R_2" = ["55", "53"]
+
+"Slide_3_CPIc_1" = ["8"]
+"Slide_3_Healthy_1" = ["2", "3"]
+"Slide_3_IFX_NR_1" = ["33"]
+"Slide_3_IFX_NR_2" = ["69"]
+"Slide_3_IFX_R_1" = ["24", "25"]
+"Slide_3_IFX_R_2" = ["66", "67"]
+
+"Slide_4_CPIc_1" = ["9"]
+"Slide_4_Healthy_1" = ["6"]
+"Slide_4_IFX_NR_1" = ["15"]
+"Slide_4_IFX_NR_2" = ["38"]
+"Slide_4_IFX_R_1" = ["22"]
+"Slide_4_IFX_R_2" = ["31"]
+
+
+[modules.Decoupler]
+celltype_key = "Final_Annotation"
+organism = "human"
+grn = "dorothea"
+dorothea_levels = ["A", "B"]
+
+[modules.Cellphonedb]
+microenv_resolution = 0.5
+chosen_cluster = "Final_Annotation"
+cpdb_version = 'v5.0.0'
+human = true
+
+target_sample = "Slide_1_CPIc_1" 
+
+use_cellsign = false
+celltypes = ["CD8 T cell", "CD4 T cell", "Macrophage"]
+target_genes = [
+    "IL6",      
+    "CXCR3",     
+    "CXCL9",      
+    "CXCL10",    
+    "CCL5",      
+    "IL1B",      
+    "IFNG",     
+    "IL22",      
+]
+
+[modules.LIANA]
+bandwidth = 15
+cutoff = 0.1
+nz_prop = 0.05
+n_nmf_components = 3
+resource_name = 'consensus'
+
+[modules.LIANA_Causal]
+celltype_col = "Final_Annotation"
+treatment_col = "TreatmentResponse"
+sample_key = "sample_id"
+organism = "human"
+solver = "HIGHS"      # 'CLARABEL', 'SCS', 'SCIP', 'SCIPY', 'HIGHS', 'OSQP'
+expr_prop = 0.1
+num_top_receptors = 10
+num_top_tfs = 10
+curation_effort = 5
+node_cutoff = 0.1
+max_runs = 20
+stable_runs = 10
+
+# Multiple Comparisons [Stim, Control]
+comparisons = [
+    ["CPIc", "Healthy"],
+    ["IFX_NR", "IFX_R"],
+    ["IFX_NR", "Healthy"],
+    ["CPIc", "IFX_NR"], 
+]
+
+# Multiple Cell Type Pairs [Source (Sender), Target (Receiver)]
+cell_type_pairs = [
+    ["Macrophage", "CD8 T cell"],
+    ["Macrophages/Monocytes", "B Cells"],
+    ["T Cells", "Stem/Progenitor Epithelial"],
+    ["B Cells", "T Cells"],
+]
+
+[modules.DEAnalysis]
+DEAnalysis = true
+celltype_col = "Final_Annotation"
+treatment_col = "TreatmentResponse"
+comparisons = [
+    ["IFX_NR", "IFX_R"],     
+    ["CPIc", "Healthy"],      
+    ["IFX_NR", "Healthy"],    
+    ["CPIc", "IFX_NR"]  
+]
+
+[modules.WebVisPrep]
+# standard_meta = ["fov", "DiseaseType", "TreatmentResponse"]
+annotation_columns = ["leiden", "Final_Annotation", "Broad_Lineage", "Broad_Celltype", "Coarse_Celltype"]
+
+# Explicitly define the target columns for the web UI here, instead of borrowing them
+primary_annotation = "Final_Annotation"
+microenv_col = "spatial_microenvironment"
