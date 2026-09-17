@@ -83,7 +83,7 @@ if __name__ == "__main__":
     from SelectionCSV import cosmx_csv, xenium_csv
     from SpatialStat import run_spatial_statistics
     from ViewImages import run_view_images
-    from WebVisPrep import run_webvisprep
+    from WebVisPrep import run_web_backend_prep
 
     # Setup Logging
     log_dir = analysis_dir / "logs"
@@ -822,6 +822,7 @@ if __name__ == "__main__":
                         module_dir=module_9_dir,
                     )
 
+            # MODULE 10: Exporting Files for Web Tool
             if any(m.startswith("10_") for m in modules_to_run):
                 _, module_1_dir = get_module(1)
                 _, module_3_dir = get_module(3)
@@ -833,27 +834,20 @@ if __name__ == "__main__":
                 _, module_8c_dir = get_module("8c")
                 _, module_9_dir = get_module(9)
                 _, module_10_dir = get_module(10)
+                
+                # Fetch the heavily processed pseudobulk/TF AnnData
                 input_file = get_input_file(module_7_dir)
 
                 DEAnalysis = settings["modules"]["DEAnalysis"].get("DEAnalysis", False)
                 webvissettings = settings["modules"]["WebVisPrep"]
 
-                celltype_key = webvissettings.get(
-                    "primary_annotation", "Broad_Celltype"
-                )
-                microenv_key = webvissettings.get(
-                    "microenv_col", "spatial_microenvironment"
-                )
+                celltype_key = webvissettings.get("primary_annotation", "Broad_Celltype")
+                microenv_key = webvissettings.get("microenv_col", "spatial_microenvironment")
+                anno_keywords = webvissettings.get("annotation_columns", ["leiden", "CellTypist", "sctype", "cluster"])
 
-                standard_meta = webvissettings.get(
-                    "standard_meta", ["fov", "DiseaseType", "TreatmentResponse"]
-                )
-                for k in [batch_key, sample_key, microenv_key]:
-                    if k and k not in standard_meta:
-                        standard_meta.append(k)
-
-                with tracker.measure("Module 10: Exporting Files for Web Tool"):
-                    run_webvisprep(
+                with tracker.measure("Module 10: Exporting Zarr and Aux Data for Web Backend"):
+                    
+                    run_web_backend_prep(
                         module_dir=module_10_dir,
                         input_adata_path=input_file,
                         batch_key=batch_key,
@@ -874,11 +868,7 @@ if __name__ == "__main__":
                         data_type=data_type,
                         settings=settings,
                         DEAnalysis=DEAnalysis,
-                        anno_keywords=webvissettings.get(
-                            "annotation_columns",
-                            ["leiden", "CellTypist", "sctype", "cluster"],
-                        ),
-                        standard_meta=standard_meta,
+                        anno_keywords=anno_keywords
                     )
 
         logger.info(

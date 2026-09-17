@@ -220,7 +220,7 @@ comparisons = [
 ]
 
 [modules.WebVisPrep]
-standard_meta = ["fov", "DiseaseType", "TreatmentResponse"]
+# standard_meta = ["fov", "DiseaseType", "TreatmentResponse"]
 annotation_columns = ["leiden", "Final_Annotation", "Broad_Lineage", "Broad_Celltype", "Coarse_Celltype"]
 
 # Explicitly define the target columns for the web UI here, instead of borrowing them
