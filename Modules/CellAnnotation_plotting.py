@@ -244,6 +244,17 @@ def plot_umapspatialscatter(
     This plots a spatial scatter plot next to a UMAP in the same figure.
     Creates ONE separate image file per sample.
     """
+    
+    if adata.obs[celltype_col].isna().any():
+        logger.info(f"Filling NaN values in '{celltype_col}' with 'Unknown' to prevent plotting errors.")
+        
+        # Add "Unknown" to categories if it doesn't exist
+        if "Unknown" not in adata.obs[celltype_col].cat.categories:
+            adata.obs[celltype_col] = adata.obs[celltype_col].cat.add_categories("Unknown")
+            
+        # Replace the NaN values
+        adata.obs[celltype_col] = adata.obs[celltype_col].fillna("Unknown")
+
     color_key = f"{celltype_col}_colors"
     if color_key not in adata.uns:
         logger.info(
