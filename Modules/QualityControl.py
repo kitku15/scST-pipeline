@@ -164,14 +164,20 @@ def run_qc(
             adata.obs["fov"] = adata.obs["FOV"]
 
         if "fov" in adata.obs.columns:
-            meta_df["fov"] = meta_df["fov"].astype(str)
-            adata.obs["fov"] = adata.obs["fov"].astype(str)
-            meta_df.set_index("fov", inplace=True)
+            meta_df["fov_clean"] = pd.to_numeric(meta_df["fov"], errors="coerce")
+            adata.obs["fov_clean"] = pd.to_numeric(adata.obs["fov"], errors="coerce")
+            
+            meta_df.set_index("fov_clean", inplace=True)
 
-            # map all collumns from meta_df to adata.obs based on 'fov'
             for col in meta_df.columns:
-                adata.obs[col] = adata.obs["fov"].map(meta_df[col])
+                if col != "fov":  
+                    adata.obs[col] = adata.obs["fov_clean"].map(meta_df[col]).astype(str).astype("category")
+            
+            if "DiseaseType" in adata.obs.columns:
+                mapped_count = adata.obs["DiseaseType"].notna().sum()
+                logger.info(f"VERIFICATION: {mapped_count} out of {adata.n_obs} cells received metadata!")
 
+            del adata.obs["fov_clean"]
             logger.info(f"Successfully mapped metadata columns: {list(meta_df.columns)}")
 
     # Check if the requested batch/sample keys exist. If not, create them.
