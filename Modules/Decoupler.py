@@ -154,9 +154,20 @@ def tf_enrichment(
     tf_list = network["source"].unique().tolist()
     logger.info(f"Total number of transcription factors: {len(tf_list)}")
 
+    # Filter out rare cell types (< 2 cells) so the t-test doesn't divide by zero
+    val_counts = score.obs[celltype_key].value_counts()
+    valid_groups = val_counts[val_counts >= 2].index.tolist()
+    
+    if len(valid_groups) == 0:
+        logger.error(f"No groups with >= 2 cells found in {celltype_key}. Cannot run TF enrichment.")
+        return
+        
+    score_filtered = score[score.obs[celltype_key].isin(valid_groups)].copy()
+    score_filtered.obs[celltype_key] = score_filtered.obs[celltype_key].cat.remove_unused_categories()
+
     # identifying marker TFs for each spatial microenvironment
     df = dc.tl.rankby_group(
-        adata=score,
+        adata=score_filtered,
         groupby=celltype_key,
         reference="rest",
         method="t-test_overestim_var",
@@ -281,7 +292,9 @@ def tf_enrichment(
         }
 
         web_dir.mkdir(exist_ok=True)
-        with open(web_dir / "tf_heatmap_data.json", "w") as f:
+        aux_dir = web_dir / "aux_data"
+        aux_dir.mkdir(exist_ok=True)
+        with open(aux_dir / "tf_heatmap_data.json", "w") as f:
             json.dump(heatmap_data, f, indent=4)
 
     # export to json for webtool
