@@ -100,7 +100,6 @@ def CosMx_to_domain(
                         "Successfully built (FOV, cell_ID) -> Proseg Global Index mapping."
                     )
                 elif "original_cell_id" in proseg_obs.columns:
-                    # Parses Proseg's combined string format (e.g., 'c_1_28_2457' -> fov='28', cell_ID='2457')
                     for idx, row in proseg_obs.iterrows():
                         orig_id = str(row["original_cell_id"])
                         parts = orig_id.split("_")
@@ -123,6 +122,7 @@ def CosMx_to_domain(
     # 2. FALLBACK: LOAD CSV POLYGONS (If Proseg isn't used)
     # -------------------------------------------------------------
     df_poly = None
+    poly_x_col, poly_y_col = None, None
     if proseg_gdf is None or not proseg_id_map:
         flat_dir_path = Path(flat_files_dir)
         poly_files = list(flat_dir_path.glob("*polygons*.csv"))
@@ -136,12 +136,14 @@ def CosMx_to_domain(
             if "cellID" in df_poly.columns:
                 df_poly.rename(columns={"cellID": "cell_ID"}, inplace=True)
 
-            if (
-                "x_global_px" not in df_poly.columns
-                or "y_global_px" not in df_poly.columns
-            ):
+            # Some CosMx formats output local px instead of global px. Handle both.
+            if "x_global_px" in df_poly.columns and "y_global_px" in df_poly.columns:
+                poly_x_col, poly_y_col = "x_global_px", "y_global_px"
+            elif "x_local_px" in df_poly.columns and "y_local_px" in df_poly.columns:
+                poly_x_col, poly_y_col = "x_local_px", "y_local_px"
+            else:
                 logger.warning(
-                    f"Could not find global coordinates in {poly_files[0].name}. Falling back to centroids."
+                    f"Could not find coordinate columns in {poly_files[0].name}. Falling back to centroids."
                 )
                 df_poly = None
         else:
@@ -162,9 +164,8 @@ def CosMx_to_domain(
 
         # 1. Process Transcripts
         if local_selected_cells is not None and "cell_ID" in df_all_pts.columns:
-            df_pts_plot = df_all_pts[
-                df_all_pts["cell_ID"].astype(str).isin(local_selected_cells)
-            ]
+            pts_cell_ids = df_all_pts["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
+            df_pts_plot = df_all_pts[pts_cell_ids.isin(local_selected_cells)]
         else:
             df_pts_plot = df_all_pts
 
@@ -190,6 +191,16 @@ def CosMx_to_domain(
         valid_local_ids = set(
             adata_fov.obs["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
         )
+        
+        # Build dictionary for true centers from spatialdata (which are properly scaled and offset)
+        true_centers = {}
+        for i, (idx, row) in enumerate(adata_fov.obs.iterrows()):
+            c_id = str(row["cell_ID"]).replace(".0", "")
+            # true_x = adata_fov.obsm["spatial"][i, 0]
+            # true_y = adata_fov.obsm["spatial"][i, 1]
+            true_x = adata_fov.obsm["global"][i, 0] * PIXEL_SIZE
+            true_y = adata_fov.obsm["global"][i, 1] * PIXEL_SIZE
+            true_centers[c_id] = (true_x, true_y)
 
         # 3. Process Boundaries / Centroids
         # --- A. PROSEG GEOMETRIES LOGIC ---
@@ -201,12 +212,10 @@ def CosMx_to_domain(
                 ):
                     continue
 
-                # Fetch global integer index for this specific FOV/Cell combination
                 proseg_idx = proseg_id_map.get((str(current_fov), cid_str))
                 if proseg_idx is None:
                     continue
 
-                # Extract shapely geometry
                 try:
                     geom = proseg_gdf.loc[int(proseg_idx)].geometry
                 except KeyError:
@@ -219,7 +228,6 @@ def CosMx_to_domain(
 
                 poly_coords = np.array(geom.exterior.coords) * PIXEL_SIZE
 
-                # Fix orientation
                 x = poly_coords[:, 0]
                 y = poly_coords[:, 1]
                 signed_area = 0.5 * np.sum(x[:-1] * y[1:] - x[1:] * y[:-1])
@@ -243,7 +251,7 @@ def CosMx_to_domain(
 
             if not fov_poly.empty:
                 for cid, group in fov_poly.groupby("cell_ID"):
-                    cid_str = str(cid)
+                    cid_str = str(cid).replace(".0", "")
 
                     if cid_str not in valid_local_ids:
                         continue
@@ -252,11 +260,25 @@ def CosMx_to_domain(
                         and cid_str not in local_selected_cells
                     ):
                         continue
+                    
+                    if cid_str not in true_centers:
+                        continue
+
+                    # Get true centroid anchored to the globally continuous space
+                    pt_x, pt_y = true_centers[cid_str]
 
                     # Get polygon coordinates
-                    poly_coords = (
-                        group[["x_global_px", "y_global_px"]].values * PIXEL_SIZE
-                    )
+                    raw_x = group[poly_x_col].values
+                    raw_y = group[poly_y_col].values
+                    
+                    poly_center_x = np.mean(raw_x)
+                    poly_center_y = np.mean(raw_y)
+                    
+                    # Scale local pixel delta to µm and anchor to the absolute true center
+                    shifted_x = pt_x + ((raw_x - poly_center_x) * PIXEL_SIZE)
+                    shifted_y = pt_y + ((raw_y - poly_center_y) * PIXEL_SIZE)
+                    
+                    poly_coords = np.column_stack((shifted_x, shifted_y))
 
                     try:
                         poly = Polygon(poly_coords)
@@ -309,25 +331,15 @@ def CosMx_to_domain(
                 f"FOV {current_fov}: Using point centroids as boundaries are missing."
             )
 
-            valid_pts = df_all_pts[df_all_pts["cell_ID"].astype(str) != "0"].copy()
-            valid_pts["cell_ID_str"] = (
-                valid_pts["cell_ID"].astype(str).str.replace(r"\.0$", "", regex=True)
-            )
-            global_centers = (
-                valid_pts.groupby("cell_ID_str")[["x_global_px", "y_global_px"]].mean()
-                * PIXEL_SIZE
-            )
-
             for cid_str in valid_local_ids:
-                if cid_str in global_centers.index:
-                    if local_selected_cells is None or cid_str in local_selected_cells:
+                if local_selected_cells is None or cid_str in local_selected_cells:
+                    if cid_str in true_centers:
                         unique_cell_id = f"{current_fov}_{cid_str}"
                         c_type = cell_id_to_type.get(
                             (str(current_fov), str(cid_str)), "Unknown"
                         )
 
-                        gcx = global_centers.loc[cid_str, "x_global_px"]
-                        gcy = global_centers.loc[cid_str, "y_global_px"]
+                        gcx, gcy = true_centers[cid_str]
 
                         all_cell_coords.append([gcx, gcy])
                         all_cell_ids.append(unique_cell_id)

@@ -378,7 +378,7 @@ if __name__ == "__main__":
                     run_annotate(
                         datatype=data_type,
                         module_dir=module_3_dir,
-                        cluster_name=anno_settings["chosen_cluster"],
+                        cluster_name=anno_settings.get("chosen_cluster", "All"),
                         input_adata_path=input_file,
                         sample_key=sample_key,
                         ScType_anno=anno_settings.get("ScType_anno", False),
@@ -387,7 +387,7 @@ if __name__ == "__main__":
                         ScType_mode=anno_settings.get("ScType_mode", None),
                         CellTypist_anno=anno_settings["CellTypist_anno"],
                         CellTypist_model=anno_settings.get("CellTypist_model", None),
-                        CellTypist_mode=anno_settings["CellTypist_mode"],
+                        CellTypist_mode=anno_settings.get("CellTypist_mode", "All"),
                         CellTypist_custom_model=anno_settings.get(
                             "CellTypist_custom_model", None
                         ),
@@ -399,6 +399,7 @@ if __name__ == "__main__":
                             "CellTypist_train_labels", None
                         ),
                         plot=anno_settings.get("plot", True),
+                        de_params=anno_settings.get("DE_params", {}),
                     )
 
             # MODULE 4: View Images
@@ -530,16 +531,31 @@ if __name__ == "__main__":
                                 adata_merged.obs[sample_key] == sample
                             ]["slide_id"].iloc[0]
 
-                            raw_io = (
-                                settings["io"].get("raw_data", {}).get(slide_id, {})
-                            )
+                            # 1. Try to get paths from the TOML [io.raw_data] dictionary
+                            raw_io = settings["io"].get("raw_data", {}).get(slide_id, {})
                             dataset_path = raw_io.get("dataset_dir")
                             zarr_path = raw_io.get("zarr_dir")
                             proseg_zarr_path = raw_io.get("proseg_zarr_dir")
 
-                            if not dataset_path:
+                            # 2. If missing from TOML, build paths dynamically
+                            if not dataset_path and "base_raw_dir" in settings["io"]:
+                                base_raw = Path(settings["io"]["base_raw_dir"])
+                                base_zarr = Path(settings["io"].get("base_zarr_dir", "data_zarrs"))
+                                
+                                potential_dataset = base_raw / slide_id
+                                if potential_dataset.exists():
+                                    dataset_path = str(potential_dataset)
+                                    zarr_path = str(base_zarr / f"{slide_id}.zarr")
+                                    
+                                    # Check for proseg zarr dynamically just in case
+                                    maybe_proseg = base_zarr / f"{slide_id}_proseg.zarr"
+                                    if maybe_proseg.exists():
+                                        proseg_zarr_path = str(maybe_proseg)
+
+                            # 3. Final check to ensure the raw data directory actually exists
+                            if not dataset_path or not Path(dataset_path).exists():
                                 logger.error(
-                                    f"Missing [io.raw_data] config for {slide_id}. Skipping MuSpAn for {sample}."
+                                    f"Missing [io.raw_data] config OR raw directory not found for {slide_id}. Skipping MuSpAn for {sample}."
                                 )
                                 continue
 
