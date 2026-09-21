@@ -170,42 +170,49 @@ def run_spatial_statistics(
         logger.info("Computing co-occurrence probability...")
         adata_subsample = sc.pp.subsample(adata_sample, fraction=0.5, copy=True)
         sq.gr.spatial_neighbors(adata_subsample, coord_type="generic", delaunay=True)
-        sq.gr.co_occurrence(
-            adata_subsample, cluster_key=cluster_name, n_jobs=16, backend="loky"
-        )
-        valid_clusters_sub = list(adata_subsample.obs[cluster_name].cat.categories)
 
-        try:
-            co_occ_data = adata_subsample.uns[f"{cluster_name}_co_occurrence"]
-            distances = co_occ_data["interval"].tolist()
-            occ_matrix = co_occ_data["occ"]
-
-            co_occ_export = {
-                "clusters": valid_clusters_sub,
-                "distances": distances,
-                "probabilities": {},
-            }
-            for i, c1 in enumerate(valid_clusters_sub):
-                for j, c2 in enumerate(valid_clusters_sub):
-                    probs = np.nan_to_num(occ_matrix[i, j, :], nan=0.0).tolist()
-                    co_occ_export["probabilities"][f"{c1}|{c2}"] = probs
-
-            with open(sample_dir / f"co_occurrence_{sample}.json", "w") as f:
-                json.dump(co_occ_export, f)
-        except Exception as e:
-            logger.warning(f"Failed to export Co-occurrence JSON: {e}")
-
-        with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
-            sq.pl.co_occurrence(
-                adata_subsample,
-                cluster_key=cluster_name,
-                clusters=valid_clusters_sub,
-                figsize=co_figsize,
+        adata_subsample.obs[cluster_name] = adata_subsample.obs[cluster_name].cat.remove_unused_categories()
+        
+        # Ensure at least 2 categories remain to do co-occurrence, otherwise just skip this step
+        if len(adata_subsample.obs[cluster_name].cat.categories) < 2:
+            logger.warning(f"Not enough valid cell types left after subsampling {sample}. Skipping co-occurrence.")
+        else:
+            sq.gr.co_occurrence(
+                adata_subsample, cluster_key=cluster_name, n_jobs=16, backend="loky"
             )
-            plt.savefig(
-                sample_dir / f"co_occurrence_{sample}.png", dpi=300, bbox_inches="tight"
-            )
-            plt.close()
+            valid_clusters_sub = list(adata_subsample.obs[cluster_name].cat.categories)
+
+            try:
+                co_occ_data = adata_subsample.uns[f"{cluster_name}_co_occurrence"]
+                distances = co_occ_data["interval"].tolist()
+                occ_matrix = co_occ_data["occ"]
+
+                co_occ_export = {
+                    "clusters": valid_clusters_sub,
+                    "distances": distances,
+                    "probabilities": {},
+                }
+                for i, c1 in enumerate(valid_clusters_sub):
+                    for j, c2 in enumerate(valid_clusters_sub):
+                        probs = np.nan_to_num(occ_matrix[i, j, :], nan=0.0).tolist()
+                        co_occ_export["probabilities"][f"{c1}|{c2}"] = probs
+
+                with open(sample_dir / f"co_occurrence_{sample}.json", "w") as f:
+                    json.dump(co_occ_export, f)
+            except Exception as e:
+                logger.warning(f"Failed to export Co-occurrence JSON: {e}")
+
+            with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+                sq.pl.co_occurrence(
+                    adata_subsample,
+                    cluster_key=cluster_name,
+                    clusters=valid_clusters_sub,
+                    figsize=co_figsize,
+                )
+                plt.savefig(
+                    sample_dir / f"co_occurrence_{sample}.png", dpi=300, bbox_inches="tight"
+                )
+                plt.close()
 
         # NEIGHBORHOOD ENRICHMENT
         logger.info("Performing neighborhood enrichment analysis...")
