@@ -17,7 +17,7 @@ logger = getLogger(__name__)
 
 
 def cluster_DE_analysis(
-    adata, cluster_col, module_dir, method=None, celltype_col=None, plot=True
+    adata, cluster_col, module_dir, method=None, celltype_col=None, plot=True, de_params=None
 ):
     """
     cluster_col: the groupings / clustering column that the DE analysis will be based on
@@ -40,7 +40,20 @@ def cluster_DE_analysis(
     if dendro_key in adata.uns:
         del adata.uns[dendro_key]
 
-    # Annotate cell clusters
+    # Filter out groups with < 2 cells to prevent Scanpy crash
+    group_counts = adata.obs[celltype_col].value_counts()
+    valid_groups = group_counts[group_counts >= 2].index.astype(str).tolist()
+    invalid_groups = group_counts[group_counts < 2].index.astype(str).tolist()
+
+    if len(valid_groups) == 0:
+        logger.warning(f"No groups with >= 2 cells found for {celltype_col}. Skipping DE analysis.")
+        return
+
+    if invalid_groups:
+        logger.warning(
+            f"Skipping DE analysis for the following groups due to insufficient cells (<2): "
+            f"{', '.join(invalid_groups)}"
+        )
 
     # Calculate the differentially expressed genes for every cluster,
     # compared to the rest of the cells in our adata
@@ -48,85 +61,101 @@ def cluster_DE_analysis(
     sc.tl.rank_genes_groups(
         adata,
         groupby=celltype_col,
+        groups=valid_groups,
         method="wilcoxon",
         use_raw=True,
+        pts=True,  # REQUIRED: Calculates fraction of cells expressing genes
     )
 
-    # 1. Plot differentially expressed genes for each cluster
-    if plot:
-        logger.info(
-            "Plotting the top differentially expressed genes for each cluster..."
-        )
-        sc.pl.rank_genes_groups_dotplot(
-            adata,
-            groupby=celltype_col,
-            standard_scale="var",
-            n_genes=5,
-            show=False,
-            save=f"{celltype_col}.png",
-        )
-        logger.info(f"Dotplot saved to {sc.settings.figdir}")
-
-        logger.info(
-            "Plot differentially expressed genes for each cluster in elbow plot..."
-        )
-        sc.pl.rank_genes_groups(
-            adata,
-            n_genes=10,
-            ncols=3,
-            legend_fontsize=10,
-            show=False,
-            save=f"_{celltype_col}.png",
-        )
-        logger.info(f"DE Analysis plots saved to {sc.settings.figdir}")
-
-    # Make a dataframe of marker expression
-    logger.info("Save files for differentially expressed genes for each cluster...")
-    logger.info("File 1...")
+    # 1. create filtered df
     markers = sc.get.rank_genes_groups_df(adata, None)
-    markers = markers[(markers["pvals_adj"] < 0.05) & (markers["logfoldchanges"] > 0.5)]
+    
+    if de_params is None:
+        de_params = {}
+        
+    pval_thresh = de_params.get("pval_adj", 0.05)
+    lfc_thresh = de_params.get("logfoldchange", 0.5)
+    min_expr_frac = de_params.get("min_expr_frac", 0.25)
+    spec_margin = de_params.get("specificity_margin", 0.1)
+    
+    # Needs to be a tuple for pandas str.startswith()
+    junk_prefixes = tuple(de_params.get("junk_prefixes", ["MT-", "RPS", "RPL", "MALAT1"]))
+
+    # apply filters
+    markers = markers[
+        (markers["pvals_adj"] < pval_thresh) & 
+        (markers["logfoldchanges"] > lfc_thresh) & 
+        (markers["pct_nz_group"] > min_expr_frac) & 
+        ((markers["pct_nz_group"] - markers["pct_nz_reference"]) > spec_margin) & 
+        (~markers["names"].str.upper().str.startswith(junk_prefixes))
+    ]
+
+    # Create dictionaries of the top filtered genes for plotting and File 2
+    top_genes_dict_5 = {}  # For the dotplot (Top 5)
+    top_genes_dict_10 = {} # For File 2 summary (Top 10)
+    
+    for group in valid_groups:
+        # Get genes for this specific cluster and sort by logfoldchange
+        grp_df = markers[markers["group"] == str(group)].sort_values(by="logfoldchanges", ascending=False)
+        top_genes_dict_5[str(group)] = grp_df["names"].head(5).tolist()
+        top_genes_dict_10[str(group)] = grp_df["names"].head(10).tolist()
+
+    # plotting
+    if plot:
+        logger.info("Plotting the top differentially expressed genes for each cluster...")
+        
+        # Remove groups that ended up with 0 markers after filtering (prevents Scanpy crash)
+        valid_plot_dict = {k: v for k, v in top_genes_dict_5.items() if len(v) > 0}
+        
+        if valid_plot_dict:
+            # Standard dotplot passing our strictly filtered dictionary
+            sc.pl.dotplot(
+                adata,
+                var_names=valid_plot_dict,
+                groupby=celltype_col,
+                standard_scale="var",
+                show=False,
+                save=f"_{celltype_col}.png",
+            )
+            logger.info(f"Dotplot saved to {sc.settings.figdir}")
+        else:
+            logger.warning("No genes passed the strict filters for any cluster. Skipping plots.")
+
+    # save
+    logger.info("Save files for differentially expressed genes for each cluster...")
+    
+    logger.info("File 1 (All filtered markers)...")
     markers.to_excel(
         output_dir / f"markers_{celltype_col}.xlsx",
         index=False,
     )
     logger.info(f"Markers saved to {module_dir}")
 
-    logger.info("File 2...")
-
-    # Define the number of clusters
-    # clusters_list = len(adata.obs[cluster_col].astype(str).unique())
-
-    # Create a list
+    logger.info("File 2 (Top 10 filtered genes per cluster)...")
     rows_list = []
-    # Get the actual group names from the DE results
-    result_groups = adata.uns["rank_genes_groups"]["names"].dtype.names
-
-    for group in result_groups:
-        top_genes = adata.uns["rank_genes_groups"]["names"][group][:10].tolist()
+    for group, top_genes in top_genes_dict_10.items():
         new_row = pd.Series({"Cluster Name": group, "Top Genes": top_genes})
         rows_list.append(new_row)
 
-    # Convert list of series to DataFrame
-    diff_gene_df = pd.concat(rows_list, axis=1).T
-    diff_gene_df.set_index(diff_gene_df.columns[0], inplace=True)
-    diff_gene_df.to_csv(
-        output_dir / f"top_DEgenes_{celltype_col}.csv",
-        index=True,
-    )
-    logger.info(f"Top differentially expressed genes saved to {module_dir}")
+    if rows_list:
+        diff_gene_df = pd.concat(rows_list, axis=1).T
+        diff_gene_df.set_index("Cluster Name", inplace=True)
+        diff_gene_df.to_csv(
+            output_dir / f"top_DEgenes_{celltype_col}.csv",
+            index=True,
+        )
+        logger.info(f"Top differentially expressed genes saved to {module_dir}")
 
-    logger.info("File 3...")
-    # Create a dictionary to store DataFrames for each cluster
-    cluster_dict = {}
+    logger.info("File 3 (Individual cluster files)...")
     cluster_path = output_dir / "DEgenes"
     cluster_path.mkdir(exist_ok=True)
-    for group_name in adata.obs[celltype_col].unique():
+    
+    for group_name in valid_groups:
         current_cluster = markers[markers["group"] == str(group_name)].sort_values(
             by="logfoldchanges", ascending=False
         )
-        cluster_dict[f"cluster_{group_name}"] = current_cluster
-
-        # Clean the name for the filename (remove spaces/slashes)
+        
+        # Clean the name for the filename
         safe_name = re.sub(r"[^\w\s-]", "", str(group_name)).replace(" ", "_")
         csv_filename = cluster_path / f"cluster_{safe_name}_data.csv"
 
@@ -157,7 +186,7 @@ def cluster_DE_analysis(
 def mode_all(adata):
     umap_keys = [k for k in adata.obsm.keys() if "X_umap_n" in k]
 
-    leiden_keys = [k for k in adata.obs.columns if k.startswith("leiden_n")]
+    leiden_keys = [k for k in adata.obs.columns if k.startswith("leiden")] # all clustering 
 
     cluster_cols = []
 
@@ -190,6 +219,7 @@ def run_annotate(
     CellTypist_train_data=None,
     CellTypist_train_labels=None,
     plot=True,
+    de_params=None,
 ):
     """Run annotation."""
 
@@ -249,6 +279,7 @@ def run_annotate(
                         method="ScType",
                         celltype_col=sctype_column,
                         plot=plot,
+                        de_params=de_params,
                     )
 
             else:  # only do ScType Annotation for one clustering
@@ -283,6 +314,7 @@ def run_annotate(
                     method="ScType",
                     celltype_col=sctype_column,
                     plot=plot,
+                    de_params=de_params,
                 )
 
     if CellTypist_anno:
@@ -340,6 +372,7 @@ def run_annotate(
                         method="CellTypist",
                         celltype_col=majorvotingcellanno_col,
                         plot=plot,
+                        de_params=de_params,
                     )
 
             else:  # only do CellTypist Annotation for one clustering
@@ -381,38 +414,73 @@ def run_annotate(
                     method="CellTypist",
                     celltype_col=majorvotingcellanno_col,
                     plot=plot,
+                    de_params=de_params,
                 )
 
     # If using scANVI (or pre-computed labels) and skipping ScType/CellTypist
     if not ScType_anno and not CellTypist_anno:
-        logger.info(f"Using pre-computed labels from '{cluster_name}' (e.g., scANVI).")
+        
+        # ADDED LOGIC: Check if user wants to run DE on ALL clustering columns
+        if cluster_name.lower() == "all":
+            logger.info("Using pre-computed labels. Running plotting and DE analysis for ALL clusters.")
+            cluster_cols = mode_all(adata)
+            
+            for umap_col, cluster_col in cluster_cols:
+                clean_umap = umap_col.removeprefix("X_") # Remove 'X_' prefix for scanpy plotting
+                
+                if plot:
+                    run_CellType_plotting(
+                        method="PreAnnotated",
+                        datatype=datatype,
+                        module_dir=module_dir,
+                        adata=adata,
+                        sample_key=sample_key,
+                        cluster_col=cluster_col,
+                        celltype_col=cluster_col,
+                        umap_col=clean_umap,
+                    )
 
-        # 1. Plotting
-        # Assuming UMAP was generated in DimReduc as X_umap_n20, find the first available UMAP
-        umap_col = next((k for k in adata.obsm.keys() if "X_umap" in k), "X_umap")
-        umap_col = umap_col.removeprefix("X_")  # Remove 'X_' prefix for scanpy plotting
+                # DE analysis
+                cluster_DE_analysis(
+                    adata,
+                    cluster_col,
+                    module_dir,
+                    method="PreAnnotated",
+                    celltype_col=cluster_col,
+                    plot=plot,
+                    de_params=de_params,
+                )
+                
+        # Running for just one specific cluster
+        else:
+            logger.info(f"Using pre-computed labels from '{cluster_name}' (e.g., scANVI).")
 
-        if plot:
-            run_CellType_plotting(
+            # Assuming UMAP was generated in DimReduc as X_umap_n20, find the first available UMAP
+            umap_col = next((k for k in adata.obsm.keys() if "X_umap" in k), "X_umap")
+            umap_col = umap_col.removeprefix("X_")  # Remove 'X_' prefix for scanpy plotting
+
+            if plot:
+                run_CellType_plotting(
+                    method="PreAnnotated",
+                    datatype=datatype,
+                    module_dir=module_dir,
+                    adata=adata,
+                    sample_key=sample_key,
+                    cluster_col=cluster_name,
+                    celltype_col=cluster_name,
+                    umap_col=umap_col,
+                )
+
+            # 2. DE analysis
+            cluster_DE_analysis(
+                adata,
+                cluster_name,
+                module_dir,
                 method="PreAnnotated",
-                datatype=datatype,
-                module_dir=module_dir,
-                adata=adata,
-                sample_key=sample_key,
-                cluster_col=cluster_name,
                 celltype_col=cluster_name,
-                umap_col=umap_col,
+                plot=plot,
+                de_params=de_params,
             )
-
-        # 2. DE analysis
-        cluster_DE_analysis(
-            adata,
-            cluster_name,
-            module_dir,
-            method="PreAnnotated",
-            celltype_col=cluster_name,
-            plot=plot,
-        )
 
     # Save anndata object (at the end)
     out_path = module_dir / input_adata_path.name
