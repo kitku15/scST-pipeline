@@ -473,9 +473,8 @@ def run_ms_cellproximity(
     )  # Find IDs that have the label AND are in the network
 
     if len(valid_ids) == 0:
-        raise ValueError(
-            f"No cells with label '{selected_celltypes[0]}' were found in the network '{network_name}'."
-        )
+        logger.warning(f"No cells with label '{selected_celltypes[0]}' found in '{network_name}'. Skipping zoom plot.")
+        return # Exits the function without crashing
 
     sample_cell_id = valid_ids[0]  # Grab the first valid cell ID
     print(

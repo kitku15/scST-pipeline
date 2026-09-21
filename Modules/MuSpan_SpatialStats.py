@@ -121,12 +121,18 @@ def calculate_pairwise_cross_pcf(
     # Initialize JSON dictionary
     cross_pcf_json = {"r_distances": [], "pairs": {}}
 
-    fig, axes = plt.subplots(num_clusters, num_clusters, figsize=(40, 40))
+    # Only draw the massive matrix plot if we have a reasonable number of clusters (< 15)
+    plot_matrix = num_clusters <= 15
+    if plot_matrix:
+        fig, axes = plt.subplots(num_clusters, num_clusters, figsize=(40, 40))
+    else:
+        logger.warning(f"Too many clusters ({num_clusters}) for matrix plot. Skipping plot, but saving JSON data.")
 
     for i, cluster_i in enumerate(unique_clusters):
         for j, cluster_j in enumerate(unique_clusters):
             if j <= i:
-                axes[i, j].axis("off")  # Optional: remove lower triangle plots
+                if plot_matrix:
+                    axes[i, j].axis("off")  # Optional: remove lower triangle plots
                 continue
 
             centroids_query = ms.query.query(
@@ -163,28 +169,31 @@ def calculate_pairwise_cross_pcf(
                     pcf, nan=0.0
                 ).tolist()
 
-                ax = axes[i, j]
-                ax.plot(r, pcf)
-                ax.axhline(1, color="k", linestyle=":")
-                ax.tick_params(axis="both", which="major", labelsize=15)
-                ax.set_ylabel(f"$g_{{{cluster_i},{cluster_j}}}(r)$", fontsize=20)
-                ax.set_xlabel("$r$", fontsize=20)
+                if plot_matrix:
+                    ax = axes[i, j]
+                    ax.plot(r, pcf)
+                    ax.axhline(1, color="k", linestyle=":")
+                    ax.tick_params(axis="both", which="major", labelsize=15)
+                    ax.set_ylabel(f"$g_{{{cluster_i},{cluster_j}}}(r)$", fontsize=20)
+                    ax.set_xlabel("$r$", fontsize=20)
 
             except Exception as e:
                 logger.warning(
                     f"Failed to calculate cross-PCF for {cluster_i} vs {cluster_j}: {e}"
                 )
-                axes[i, j].axis("off")
+                if plot_matrix:
+                    axes[i, j].axis("off")
 
-    plt.tight_layout()
     domain_name = domain.name
-    output_path = (
-        Path(module_dir) / domain_name / "cross_pair_correlation_function_all.png"
-    )
-    plt.savefig(output_path)
-    plt.close(fig)
+    output_path = Path(module_dir) / domain_name / "cross_pair_correlation_function_all.png"
+    
+    if plot_matrix:
+        plt.tight_layout()
+        plt.savefig(output_path)
+        plt.close(fig)
+        logger.info(f"Cross-PCF matrix plot saved at {output_path}")
 
-    # Write out the JSON file
+    # Write out the JSON file (This always runs, regardless of plotting)
     json_output_path = Path(module_dir) / domain_name / "cross_pcf_all.json"
     with open(json_output_path, "w") as f:
         json.dump(cross_pcf_json, f)
