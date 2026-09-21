@@ -374,7 +374,6 @@ def export_de_analysis_for_web(mod3_dir: str, out_dir: str):
             clusters.append(cluster_name)
 
             df = pd.read_csv(c_file)
-            df = df[(df["pvals_adj"] < 0.1) | (abs(df["logfoldchanges"]) > 0.5)]
 
             clean_data = {
                 "names": df["names"].tolist(),
@@ -542,6 +541,10 @@ def min_max_scale(arr):
 def prepare_zarr_for_fastapi(input_h5ad, output_zarr, spatial_key, mod8b_dir):
     logger.info(f"Loading {input_h5ad}...")
     adata = sc.read_h5ad(input_h5ad)
+
+    # delete the duplicate slide_ID
+    if "slide_ID" in adata.obs.columns:
+        adata.obs = adata.obs.drop(columns=["slide_ID"])
 
     if mod8b_dir and os.path.exists(mod8b_dir):
         logger.info("Injecting LIANA+ Single-Cell CCC scores into Zarr...")
