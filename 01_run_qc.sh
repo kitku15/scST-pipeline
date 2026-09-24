@@ -1,8 +1,8 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=4:mem=64gb
-#PBS -l walltime=04:00:00
-#PBS -N run_qc
-#PBS -J 1-4
+#PBS -l select=1:ncpus=4:mem=16gb
+#PBS -l walltime=00:30:00
+#PBS -N run_qc_testxenium
+#PBS -J 1-27
 #PBS -j oe
 
 set -euo pipefail
@@ -17,8 +17,14 @@ SIF_IMAGE="$(readlink -f kitku.sif)"
 # get base directory from the TOML file
 BASE_DIR=$(grep -oP 'base_raw_dir\s*=\s*"\K[^"]+' "$CONFIG_NAME")
 
-# Count how many dataset directories exist inside the base directory
-NUM_SLIDES=$(find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
+# Count how many dataset directories exist (handle nested Xenium logic)
+if grep -q 'data_type\s*=\s*"Xenium"' "$CONFIG_NAME"; then
+    # Count nested output folders for Xenium
+    NUM_SLIDES=$(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -name "output-*" | wc -l)
+else
+    # Default count for CosMx
+    NUM_SLIDES=$(find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
+fi
 
 # If this job's array index is greater than the slides we actually have, exit immediately
 if [ "$PBS_ARRAY_INDEX" -gt "$NUM_SLIDES" ]; then
@@ -58,6 +64,7 @@ echo "Running Spatial Pipeline: Format & QC for Slide ${PBS_ARRAY_INDEX}" >&2
 
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
+  --bind "/rds/general/user/bth22/ephemeral:/rds/general/user/bth22/ephemeral" \
   "$SIF_IMAGE" \
   "$CONFIG_NAME" --modules 0 1 --sample_index "$PBS_ARRAY_INDEX"
 

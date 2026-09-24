@@ -4,6 +4,7 @@ import itertools
 import warnings
 from logging import getLogger
 from pathlib import Path
+from typing import Dict, Any
 
 import liana as li
 import matplotlib.pyplot as plt
@@ -13,66 +14,16 @@ import pandas as pd
 import scanpy as sc
 import scipy.sparse as sp
 import squidpy as sq
+from anndata import AnnData
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def run_liana_pipeline(
-    module_dir: Path,
-    input_adata_path: Path,
-    tf_adata_path: Path,
-    spatial_key: str,
-    sample_key: str,
-    settings: dict,
-):
-    """Main runner for LIANA+ Spatial CCC."""
-    module_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1. Load Settings
-    bandwidth = settings.get("bandwidth", 400)
-    cutoff = settings.get("cutoff", 0.1)
-    nz_prop = settings.get("nz_prop", 0.05)
-    n_nmf_components = settings.get("n_nmf_components", 5)
-    resource_name = settings.get(
-        "resource_name", "consensus"
-    )  # Use 'mouseconsensus' for mouse
-
-    # 2. Load and Preprocess Main Spatial Data
-    logger.info(f"Loading spatial data from {input_adata_path}...")
-    adata = sc.read_h5ad(input_adata_path)
-
-    # 2.5 Restore Raw Counts (Avoid taking log1p of negative scaled values)
-    if "counts" in adata.layers:
-        logger.info("Restoring raw counts from adata.layers['counts']...")
-        adata.X = adata.layers["counts"].copy()
-    elif adata.raw is not None:
-        logger.info("Restoring data from adata.raw...")
-        adata.X = adata.raw.X.copy()
-
-    # Clean up any potential NaNs just to be bulletproof
-
-    if sp.issparse(adata.X):
-        adata.X.data = np.nan_to_num(adata.X.data, nan=0.0, posinf=0.0, neginf=0.0)
-    else:
-        adata.X = np.nan_to_num(adata.X, nan=0.0, posinf=0.0, neginf=0.0)
-
-    # Now it is safe to normalize
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-
-    # 3. Build Spatial Graph
-    # logger.info(f"Building spatial graph (bandwidth={bandwidth}, cutoff={cutoff})...")
-    # li.ut.spatial_neighbors(
-    #     adata,
-    #     bandwidth=bandwidth,
-    #     cutoff=cutoff,
-    #     kernel='gaussian',
-    #     set_diag=True,
-    #     spatial_key=spatial_key
-    # )
-
-    # 3. Build Spatial Graph (Sample-Aware)
+def _build_sample_aware_spatial_graph(
+    adata: AnnData, sample_key: str, spatial_key: str, bandwidth: int, cutoff: float
+) -> None:
+    """Builds a global spatial graph safely without crossing sample boundaries to avoid 'ghost' connections."""
     logger.info(
         f"Building spatial graph per sample (bandwidth={bandwidth}, cutoff={cutoff})..."
     )
@@ -102,21 +53,17 @@ def run_liana_pipeline(
         sub_conn = adata_sub.obsp["spatial_connectivities"].tocoo()
 
         # 5. Map the row/col indices from the subset back to the global adata indices
-        mapped_rows = idx[sub_conn.row]
-        mapped_cols = idx[sub_conn.col]
-
-        row_list.append(mapped_rows)
-        col_list.append(mapped_cols)
+        row_list.append(idx[sub_conn.row])
+        col_list.append(idx[sub_conn.col])
         data_list.append(sub_conn.data)
 
     # Combine all the localized matrices
-    all_rows = np.concatenate(row_list)
-    all_cols = np.concatenate(col_list)
-    all_data = np.concatenate(data_list)
-
-    # Build the global sparse matrix for the whole AnnData
     global_connectivities = sp.csr_matrix(
-        (all_data, (all_rows, all_cols)), shape=(adata.n_obs, adata.n_obs)
+        (
+            np.concatenate(data_list),
+            (np.concatenate(row_list), np.concatenate(col_list)),
+        ),
+        shape=(adata.n_obs, adata.n_obs),
     )
 
     # Store back into the main object
@@ -130,6 +77,127 @@ def run_liana_pipeline(
             "set_diag": True,
         },
     }
+
+
+def _generate_spatial_diagnostics(
+    adata: AnnData, sample_key: str, spatial_key: str, bandwidth: int, module_dir: Path
+) -> None:
+    """Generates diagnostic plots for LIANA+ spatial bandwidth and connectivity."""
+    logger.info("Generating LIANA+ spatial graph diagnostic plots...")
+
+    # Grab the first sample to use as a representative layout
+    first_sample = adata.obs[sample_key].unique()[0]
+    adata_sub = adata[adata.obs[sample_key] == first_sample].copy()
+    coords = adata_sub.obsm[spatial_key]
+
+    # 1. Bandwidth Query Plot (Neighbors vs Bandwidth)
+    try:
+        # Scale the end of the plot dynamically to be roughly 3x the chosen bandwidth
+        end_bw = max(100, bandwidth * 3)
+        plot_bw, _ = li.ut.query_bandwidth(
+            coordinates=coords, start=0, end=end_bw, interval_n=20, figure_size=(6, 5)
+        )
+
+        bw_path = module_dir / "liana_bandwidth_diagnostic.png"
+        if hasattr(plot_bw, "save"):
+            plot_bw.save(bw_path, width=6, height=5, dpi=300, verbose=False)
+        else:
+            plt.savefig(bw_path, dpi=300, bbox_inches="tight")
+            plt.close()
+        logger.info(f"Saved Bandwidth diagnostic plot to {bw_path.name}")
+    except Exception as e:
+        logger.warning(f"Failed to generate LIANA bandwidth diagnostic plot: {e}")
+
+    # 2. Connectivity Weights Plot (Testing Multiple Bandwidths)
+    try:
+        sub_median_idx = len(adata_sub) // 2
+        cutoff = (
+            adata.uns.get("spatial_neighbors", {}).get("params", {}).get("cutoff", 0.1)
+        )
+
+        # Test Half, Actual, and Double bandwidth
+        test_bandwidths = [max(1, bandwidth // 2), bandwidth, bandwidth * 2]
+
+        for bw in test_bandwidths:
+            # Recompute graph on the subset for this specific bandwidth
+            li.ut.spatial_neighbors(
+                adata_sub,
+                bandwidth=bw,
+                cutoff=cutoff,
+                kernel="gaussian",
+                set_diag=True,
+                spatial_key=spatial_key,
+            )
+
+            plot_conn = li.pl.connectivity(
+                adata_sub,
+                spatial_key=spatial_key,
+                idx=sub_median_idx,
+                size=1.5,
+                figure_size=(6, 5),
+            )
+
+            conn_path = module_dir / f"liana_connectivity_bw{bw}_{first_sample}.png"
+            if hasattr(plot_conn, "save"):
+                plot_conn.save(conn_path, width=6, height=5, dpi=300, verbose=False)
+            else:
+                plt.savefig(conn_path, dpi=300, bbox_inches="tight")
+                plt.close()
+
+        logger.info(
+            f"Saved Spatial Connectivity maps for bandwidths: {test_bandwidths}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to generate LIANA connectivity plots: {e}")
+
+
+def run_liana_pipeline(
+    module_dir: Path,
+    input_adata_path: Path,
+    tf_adata_path: Path,
+    spatial_key: str,
+    sample_key: str,
+    settings: Dict[str, Any],
+) -> None:
+    """Main runner for LIANA+ Spatial CCC."""
+    module_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Load Settings
+    bandwidth = settings.get("bandwidth", 400)
+    cutoff = settings.get("cutoff", 0.1)
+    nz_prop = settings.get("nz_prop", 0.05)
+    n_nmf_components = settings.get("n_nmf_components", 5)
+    resource_name = settings.get(
+        "resource_name", "consensus"
+    )  # Use 'mouseconsensus' for mouse
+
+    # 2. Load and Preprocess Main Spatial Data
+    logger.info(f"Loading spatial data from {input_adata_path}...")
+    adata = sc.read_h5ad(input_adata_path)
+
+    # 2.5 Restore Raw Counts (Avoid taking log1p of negative scaled values)
+    if "counts" in adata.layers:
+        logger.info("Restoring raw counts from adata.layers['counts']...")
+        adata.X = adata.layers["counts"].copy()
+    elif adata.raw is not None:
+        logger.info("Restoring data from adata.raw...")
+        adata.X = adata.raw.X.copy()
+
+    # Clean up any potential NaNs just to be bulletproof
+    if sp.issparse(adata.X):
+        adata.X.data = np.nan_to_num(adata.X.data, nan=0.0, posinf=0.0, neginf=0.0)
+    else:
+        adata.X = np.nan_to_num(adata.X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Now it is safe to normalize
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    sc.pp.log1p(adata)
+
+    # 3. Build Spatial Graph (Sample-Aware)
+    _build_sample_aware_spatial_graph(adata, sample_key, spatial_key, bandwidth, cutoff)
+
+    # 3.5 Generate Diagnostic Plots (Bandwidth & Connectivity)
+    _generate_spatial_diagnostics(adata, sample_key, spatial_key, bandwidth, module_dir)
 
     # 4. Run Bivariate Ligand-Receptor Analysis
     logger.info(f"Running Bivariate LR Analysis (resource={resource_name})...")
@@ -227,7 +295,6 @@ def run_liana_pipeline(
         # Calculate Coefficient of Variation to find highly variable TFs
         tf_means = tf_adata.X.mean(axis=0)
         tf_stds = tf_adata.X.std(axis=0)
-        # Avoid division by zero
         tf_means[tf_means == 0] = 1e-12
         cv = np.abs(tf_stds / tf_means)
 
@@ -259,8 +326,6 @@ def run_liana_pipeline(
 
         # Build MuData object with perfectly aligned cells
         mdata = md.MuData({"tf": tf_adata, "lr": lrdata_sub})
-
-        # Share spatial connectivities from the subsetted adata
         mdata.obsp["spatial_connectivities"] = adata_sub.obsp[
             "spatial_connectivities"
         ].copy()
@@ -305,8 +370,6 @@ def run_liana_pipeline(
         )
         if top_tf_lrs:
             target_sample = adata.obs[sample_key].unique()[0]
-
-            # Determine correct library key for squidpy plotting
             lib_key = (
                 f"tf:{sample_key}" if f"tf:{sample_key}" in bdata.obs else sample_key
             )

@@ -77,18 +77,6 @@ def run_muspan_graph(
 
     logger.info(f"Networks in domain: {domain.networks.keys()}")
 
-    # domain_path = Path(muspan_object)
-    # domain_name = domain_path.stem
-    # domain_dir = domain_path.parent
-
-    # # Save domain
-    # ms.io.save_domain(
-    #     domain,
-    #     name_of_file=str(domain_name),
-    #     path_to_save=str(domain_dir),
-    # )
-    # logger.info("Domain saved")
-
 
 def plot_delaunay_networks(domain, module_dir):
     """Plot the unfiltered and filtered Delaunay cell-cell (CC) networks for domain.

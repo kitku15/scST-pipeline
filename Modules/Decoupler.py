@@ -18,8 +18,7 @@ logger = getLogger(__name__)
 
 
 def make_tffile(module_dir, score, celltype_key, active_tfs_file_name, organism):
-    # 1. Run statistical tests to find TFs active in each microenvironment
-    # (This uses the 'score' AnnData object we made earlier, which holds the ULM estimates)
+    # find TFs active in each microenvironment
     marker_tfs = dc.tl.rankby_group(
         adata=score,
         groupby=celltype_key,
@@ -27,7 +26,6 @@ def make_tffile(module_dir, score, celltype_key, active_tfs_file_name, organism)
         method="t-test_overestim_var",
     )
 
-    # 2. Filter for TFs that are strictly "Active"
     # We only want TFs that are positively enriched (stat > 0) and statistically significant (padj < 0.05)
     active_tfs_filtered = marker_tfs[
         (marker_tfs["stat"] > 0) & (marker_tfs["padj"] < 0.05)
@@ -63,7 +61,6 @@ def make_tffile(module_dir, score, celltype_key, active_tfs_file_name, organism)
 
 def tf_enrichment(
     module_dir,
-    web_dir,
     input_adata_path,
     sample_key,
     celltype_key,
@@ -123,13 +120,12 @@ def tf_enrichment(
 
     network = grn_selection()
 
-    # 2. Match gene casing
+    # Match gene casing
     if organism == "human":
         adata.var_names = adata.var_names.str.upper()
     elif organism == "mouse":
         adata.var_names = adata.var_names.str.capitalize()
 
-    # 3. RUN ULM
     result = dc.mt.ulm(data=adata, net=network, raw=True, verbose=True)
 
     # If Decoupler dropped empty cells, it returns a new AnnData object. Catch it!
@@ -142,7 +138,6 @@ def tf_enrichment(
     # extract scores as new anndata object
     score = dc.pp.get_obsm(adata=adata, key="score_ulm")
 
-    # 1. PURGE UNUSED CATEGORIES & CACHED DENDROGRAMS
     if hasattr(score.obs[celltype_key], "cat"):
         score.obs[celltype_key] = score.obs[celltype_key].cat.remove_unused_categories()
 
@@ -157,13 +152,17 @@ def tf_enrichment(
     # Filter out rare cell types (< 2 cells) so the t-test doesn't divide by zero
     val_counts = score.obs[celltype_key].value_counts()
     valid_groups = val_counts[val_counts >= 2].index.tolist()
-    
+
     if len(valid_groups) == 0:
-        logger.error(f"No groups with >= 2 cells found in {celltype_key}. Cannot run TF enrichment.")
+        logger.error(
+            f"No groups with >= 2 cells found in {celltype_key}. Cannot run TF enrichment."
+        )
         return
-        
+
     score_filtered = score[score.obs[celltype_key].isin(valid_groups)].copy()
-    score_filtered.obs[celltype_key] = score_filtered.obs[celltype_key].cat.remove_unused_categories()
+    score_filtered.obs[celltype_key] = score_filtered.obs[
+        celltype_key
+    ].cat.remove_unused_categories()
 
     # identifying marker TFs for each spatial microenvironment
     df = dc.tl.rankby_group(
@@ -201,7 +200,7 @@ def tf_enrichment(
                     .tolist()
                 )
 
-        # 2. FALLBACK: If a category has no specific TFs, assign top overall TFs so Scanpy never crashes
+        # If a category has no specific TFs, assign top overall TFs so Scanpy never crashes
         if not top_tfs:
             top_tfs = (
                 df.sort_values("stat", ascending=False)["name"]
@@ -249,31 +248,31 @@ def tf_enrichment(
     logger.info(f"Saved tf heatmap plot to {save_path}")
 
     def export_json_heatmap():
-        # 1. Flatten top TFs into a single list
+        # Flatten top TFs into a single list
         all_heatmap_tfs = []
         for tfs in source_markers.values():
             for tf in tfs:
                 if tf not in all_heatmap_tfs:
                     all_heatmap_tfs.append(tf)
 
-        # 2. Get mean scores for all TFs per cell type
+        # Get mean scores for all TFs per cell type
         mean_scores = score[:, all_heatmap_tfs].to_df()
         mean_scores[celltype_key] = score.obs[celltype_key].values
         mean_scores_grouped = mean_scores.groupby(celltype_key).mean()
 
-        # 3. standard_scale="var": Scale each column (TF) individually from 0 to 1
+        # standard_scale="var": Scale each column (TF) individually from 0 to 1
         denom = mean_scores_grouped.max() - mean_scores_grouped.min()
         denom[denom == 0] = 1.0  # Prevent division by zero
         scaled_df = (mean_scores_grouped - mean_scores_grouped.min()) / denom
 
-        # 4. dendrogram=True: Perform Hierarchical Clustering ONLY on the cell types (Rows)
+        # dendrogram=True: Perform Hierarchical Clustering ONLY on the cell types (Rows)
         row_linkage = sch.linkage(scaled_df, method="ward")
         row_order = sch.leaves_list(row_linkage)
 
         # Get the newly sorted cell types
         ordered_celltypes = scaled_df.index[row_order].tolist()
 
-        # 5. var_names=source_markers: Reorder the X-axis to match the Y-axis clustered order!
+        # var_names=source_markers: Reorder the X-axis to match the Y-axis clustered order
         ordered_tfs = []
         for ct in ordered_celltypes:
             if ct in source_markers:
@@ -281,20 +280,17 @@ def tf_enrichment(
                     if tf not in ordered_tfs:
                         ordered_tfs.append(tf)
 
-        # 6. Apply both ordered lists to the dataframe
+        # Apply both ordered lists to the dataframe
         final_df = scaled_df.loc[ordered_celltypes, ordered_tfs]
 
-        # 7. Export for React Plotly Heatmap
+        # Export for React Plotly Heatmap
         heatmap_data = {
             "x": final_df.columns.tolist(),  # TFs ordered sequentially by their clustered cell type
             "y": final_df.index.tolist(),  # Clustered Cell Types
             "z": final_df.values.tolist(),  # Scaled scores matrix
         }
 
-        web_dir.mkdir(exist_ok=True)
-        aux_dir = web_dir / "aux_data"
-        aux_dir.mkdir(exist_ok=True)
-        with open(aux_dir / "tf_heatmap_data.json", "w") as f:
+        with open(module_dir / "tf_heatmap_data.json", "w") as f:
             json.dump(heatmap_data, f, indent=4)
 
     # export to json for webtool
@@ -312,11 +308,9 @@ def tf_enrichment(
 
     logger.info("Visualizing top tfs per microenvironment on tissue...")
 
-    # LOOP OVER SAMPLES TO PREVENT SQUIDPY GRID CRASH
     for sample in score.obs[sample_key].unique():
         score_sample = score[score.obs[sample_key] == sample].copy()
 
-        # We generate custom titles for this specific sample
         titles = [
             f"{t} (Microenv {m}) - {sample}" for t, m in zip(top_tfs, top_tfs_microenvs)
         ]
@@ -346,7 +340,6 @@ def tf_enrichment(
     # generate pseudobulk adata for DE analysis
     logger.info("Generating pseudobulk AnnData...")
     try:
-        # 1. Create the raw pseudobulk
         psbulk = dc.pp.pseudobulk(
             adata,
             sample_col=sample_key,
@@ -355,10 +348,10 @@ def tf_enrichment(
             mode="sum",
         )
 
-        # 2. BULLETPROOF: Manually calculate the exact total counts per pseudobulk sample
+        #  calculate the exact total counts per pseudobulk sample
         psbulk.obs["manual_total_counts"] = np.array(psbulk.X.sum(axis=1)).flatten()
 
-        # 3. BULLETPROOF: Manually calculate the exact number of cells using the original adata
+        # 3. calculate the exact number of cells using the original adata
         cell_counts_dict = (
             adata.obs.groupby([sample_key, celltype_key]).size().to_dict()
         )
@@ -372,13 +365,13 @@ def tf_enrichment(
 
         psbulk.obs["manual_n_cells"] = psbulk_n_cells
 
-        # 4. Apply the thresholds safely
+        # Apply the threshold
         valid_mask = (psbulk.obs["manual_n_cells"] >= 10) & (
             psbulk.obs["manual_total_counts"] >= 1000
         )
         psbulk = psbulk[valid_mask].copy()
 
-        # 5. Filter unexpressed genes
+        # Filter unexpressed genes
         try:
             dc.pp.filter_by_prop(psbulk, min_prop=0.2, min_smpls=2)
         except AttributeError:
@@ -395,7 +388,6 @@ def tf_enrichment(
         logger.error(f"Failed to generate pseudobulk data: {e}")
 
     # save adata
-    out_path = module_dir / input_adata_path.name
-    adata.write_h5ad(out_path)
-    score.write_h5ad(module_dir / "tf_activity_scores.h5ad")
+    out_path = module_dir / "tf_activity_scores.h5ad"
+    score.write_h5ad(out_path)
     logger.info(f"Data saved to {out_path}")

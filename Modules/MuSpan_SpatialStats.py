@@ -126,7 +126,9 @@ def calculate_pairwise_cross_pcf(
     if plot_matrix:
         fig, axes = plt.subplots(num_clusters, num_clusters, figsize=(40, 40))
     else:
-        logger.warning(f"Too many clusters ({num_clusters}) for matrix plot. Skipping plot, but saving JSON data.")
+        logger.warning(
+            f"Too many clusters ({num_clusters}) for matrix plot. Skipping plot, but saving JSON data."
+        )
 
     for i, cluster_i in enumerate(unique_clusters):
         for j, cluster_j in enumerate(unique_clusters):
@@ -185,8 +187,10 @@ def calculate_pairwise_cross_pcf(
                     axes[i, j].axis("off")
 
     domain_name = domain.name
-    output_path = Path(module_dir) / domain_name / "cross_pair_correlation_function_all.png"
-    
+    output_path = (
+        Path(module_dir) / domain_name / "cross_pair_correlation_function_all.png"
+    )
+
     if plot_matrix:
         plt.tight_layout()
         plt.savefig(output_path)
@@ -213,10 +217,6 @@ def run_muspan_stats(module_dir, domain, cluster_labels, cell_types):
         raise err
 
     module_dir.mkdir(exist_ok=True)
-
-    # Load MuSpAn object
-    # logger.info("Loading MuSpAn object...")
-    # domain = ms.io.load_domain(path_to_domain=str(muspan_object))
 
     # Get cluster labels
     labels_array, _ = ms.query.get_labels(domain, cluster_labels)

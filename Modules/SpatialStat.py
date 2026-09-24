@@ -1,9 +1,11 @@
 """Spatial statistics module."""
 
+import gc
 import json
 import warnings
 from logging import getLogger
 from pathlib import Path
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,27 +13,163 @@ import pandas as pd
 import scanpy as sc
 import seaborn as sns
 import squidpy as sq
+from anndata import AnnData
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
+class SpatialAnalysisError(Exception):
+    """Custom exception for failures in spatial graph computation."""
+
+    pass
+
+
+def _serialize_matrix(matrix: np.ndarray) -> List[List[float]]:
+    """Safely handles NaNs and converts numpy matrices to JSON-serializable lists."""
+    return np.nan_to_num(matrix, nan=0.0).tolist()
+
+
+def _compute_and_plot_centrality(
+    adata_sample: AnnData,
+    cluster_name: str,
+    sample_dir: Path,
+    sample: str,
+    figsize: tuple,
+) -> pd.DataFrame:
+    logger.info(f"[{sample}] Computing and plotting centrality scores...")
+    sq.gr.centrality_scores(adata_sample, cluster_key=cluster_name)
+
+    try:
+        cent_df = adata_sample.uns[f"{cluster_name}_centrality_scores"]
+        cent_json_path = sample_dir / f"centrality_scores_{sample}.json"
+        cent_df.replace([np.inf, -np.inf, np.nan], None).to_json(
+            cent_json_path, orient="index"
+        )
+    except KeyError as e:
+        raise SpatialAnalysisError(
+            f"Centrality scores missing in .uns for {sample}"
+        ) from e
+
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        sq.pl.centrality_scores(adata_sample, cluster_key=cluster_name, figsize=figsize)
+        plt.savefig(
+            sample_dir / f"centrality_scores_{sample}.png", dpi=300, bbox_inches="tight"
+        )
+        plt.close()
+
+    return cent_df
+
+
+def _compute_and_plot_co_occurrence(
+    adata_sub: AnnData, cluster_name: str, sample_dir: Path, sample: str, figsize: tuple
+) -> None:
+    logger.info(f"[{sample}] Computing co-occurrence probability...")
+
+    adata_sub.obs[cluster_name] = adata_sub.obs[
+        cluster_name
+    ].cat.remove_unused_categories()
+
+    if len(adata_sub.obs[cluster_name].cat.categories) < 2:
+        logger.warning(
+            f"Not enough valid cell types left after subsampling {sample}. Skipping co-occurrence."
+        )
+        return
+
+    sq.gr.co_occurrence(adata_sub, cluster_key=cluster_name, n_jobs=16, backend="loky")
+    valid_clusters_sub = list(adata_sub.obs[cluster_name].cat.categories)
+
+    try:
+        co_occ_data = adata_sub.uns[f"{cluster_name}_co_occurrence"]
+        occ_matrix = co_occ_data["occ"]
+        co_occ_export = {
+            "clusters": valid_clusters_sub,
+            "distances": co_occ_data["interval"].tolist(),
+            "probabilities": {},
+        }
+        for i, c1 in enumerate(valid_clusters_sub):
+            for j, c2 in enumerate(valid_clusters_sub):
+                co_occ_export["probabilities"][f"{c1}|{c2}"] = np.nan_to_num(
+                    occ_matrix[i, j, :], nan=0.0
+                ).tolist()
+
+        with open(sample_dir / f"co_occurrence_{sample}.json", "w") as f:
+            json.dump(co_occ_export, f)
+    except Exception as e:
+        logger.warning(f"Failed to export Co-occurrence JSON: {e}")
+
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        sq.pl.co_occurrence(
+            adata_sub,
+            cluster_key=cluster_name,
+            clusters=valid_clusters_sub,
+            figsize=figsize,
+        )
+        plt.savefig(
+            sample_dir / f"co_occurrence_{sample}.png", dpi=300, bbox_inches="tight"
+        )
+        plt.close()
+
+
+def _compute_and_plot_nhood(
+    adata_sample: AnnData,
+    cluster_name: str,
+    sample_dir: Path,
+    sample: str,
+    figsize: tuple,
+    valid_clusters: List[str],
+) -> np.ndarray:
+    logger.info(f"[{sample}] Performing neighborhood enrichment analysis...")
+    sq.gr.nhood_enrichment(adata_sample, cluster_key=cluster_name)
+
+    nhood_zscore = adata_sample.uns[f"{cluster_name}_nhood_enrichment"]["zscore"]
+    clusters_present = list(adata_sample.obs[cluster_name].cat.categories)
+
+    nhood_export = {
+        "clusters": clusters_present,
+        "zscores": _serialize_matrix(nhood_zscore),
+    }
+    with open(sample_dir / f"nhood_enrichment_{sample}.json", "w") as f:
+        json.dump(nhood_export, f)
+
+    with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
+        fig, ax = plt.subplots(1, 1, figsize=figsize, facecolor="white")
+        sq.pl.nhood_enrichment(
+            adata_sample,
+            cluster_key=cluster_name,
+            title=f"Neighborhood enrichment ({sample})",
+            ax=ax,
+        )
+        plt.savefig(
+            sample_dir / f"nhood_enrichment_{sample}.png", dpi=300, bbox_inches="tight"
+        )
+        plt.close(fig)
+
+    aligned_matrix = np.full((len(valid_clusters), len(valid_clusters)), np.nan)
+    for i, c1 in enumerate(clusters_present):
+        for j, c2 in enumerate(clusters_present):
+            if c1 in valid_clusters and c2 in valid_clusters:
+                aligned_matrix[valid_clusters.index(c1), valid_clusters.index(c2)] = (
+                    nhood_zscore[i, j]
+                )
+
+    return aligned_matrix
+
+
 def run_spatial_statistics(
-    module_dir,
-    input_adata_path,
-    sample_key,
-    cluster_name,
-    condition_key=None,
-    reference_condition=None,
-    skip_compute=False,
+    module_dir: Path,
+    input_adata_path: Path,
+    sample_key: str,
+    cluster_name: str,
+    condition_key: str = None,
+    reference_condition: str = None,
+    skip_compute: bool = False,
 ):
     """Run spatial statistics."""
-
+    input_adata_path = Path(input_adata_path)
     module_dir.mkdir(exist_ok=True)
 
-    # Import data
     logger.info("Loading data...")
-    input_adata_path = Path(input_adata_path)
     adata = sc.read_h5ad(input_adata_path)
 
     if adata.obs[cluster_name].dtype.name != "category":
@@ -41,37 +179,31 @@ def run_spatial_statistics(
     num_clusters = len(valid_clusters)
     logger.info(f"Detected {num_clusters} unique clusters. Adjusting plot sizes...")
 
-    cent_width = max(16.0, num_clusters * 1.5)
-    cent_figsize = (cent_width, max(5.0, num_clusters * 0.3))
-    co_size = max(10.0, num_clusters * 4)
-    co_figsize = (co_size, 10.0)
-    nhood_size = max(8.0, num_clusters * 0.6)
-    nhood_figsize = (nhood_size, nhood_size)
+    cent_figsize = (max(16.0, num_clusters * 1.5), max(5.0, num_clusters * 0.3))
+    co_figsize = (max(10.0, num_clusters * 4), 10.0)
+    nhood_figsize = (max(8.0, num_clusters * 0.6), max(8.0, num_clusters * 0.6))
 
     do_aggregation = condition_key is not None and condition_key in adata.obs.columns
-    if do_aggregation:
-        agg_nhood = {}
-        agg_centrality = []
-        agg_moran = []
-    else:
+    if not do_aggregation:
         logger.warning(
             "No valid condition_key provided. Skipping condition-level aggregations."
         )
 
-    # --- PER-SAMPLE LOOP ---
+    agg_nhood, agg_centrality, agg_moran = {}, [], []
+
     for sample in adata.obs[sample_key].unique():
         logger.info(f"--- Processing Spatial Statistics for Sample: {sample} ---")
 
-        # Cells without a label (e.g. unmatched in a transferred annotation) are
-        # NaN in cluster_name, which squidpy cannot handle
         in_sample = adata.obs[sample_key] == sample
         labelled = in_sample & adata.obs[cluster_name].notna()
         n_unlabelled = int(in_sample.sum() - labelled.sum())
+
         if n_unlabelled:
             logger.warning(
                 f"Excluding {n_unlabelled:,} / {int(in_sample.sum()):,} cells with no "
                 f"'{cluster_name}' label from {sample}."
             )
+
         if labelled.sum() == 0:
             logger.warning(f"No labelled cells in {sample}. Skipping sample.")
             continue
@@ -80,14 +212,10 @@ def run_spatial_statistics(
         sample_dir = module_dir / sample
         sample_dir.mkdir(exist_ok=True)
 
-        if do_aggregation:
-            cond = adata_sample.obs[condition_key].iloc[0]
-            if cond not in agg_nhood:
-                agg_nhood[cond] = []
+        cond = adata_sample.obs[condition_key].iloc[0] if do_aggregation else None
+        if do_aggregation and cond not in agg_nhood:
+            agg_nhood[cond] = []
 
-        # =========================================================
-        # FAST RESCUE MODE (Load from disk, skip heavy compute)
-        # =========================================================
         if skip_compute:
             logger.info(f"Rescue Mode Active: Loading saved JSONs/CSVs for {sample}...")
 
@@ -128,153 +256,67 @@ def run_spatial_statistics(
                 moran_df["Gene"] = moran_df.index
                 agg_moran.append(moran_df)
 
-            continue  # Skip the rest of the loop and go to the next sample
+            continue  # Skip heavy compute and proceed to next sample
 
-        # =========================================================
-        # NORMAL MODE (Compute everything)
-        # =========================================================
+        # 1. Spatial Graph
         logger.info("Building spatial neighborhood graph...")
         sq.gr.spatial_neighbors(adata_sample, coord_type="generic", delaunay=True)
 
-        # CENTRALITY
-        logger.info("Computing and plotting centrality scores...")
-        sq.gr.centrality_scores(adata_sample, cluster_key=cluster_name)
-        try:
-            cent_df = adata_sample.uns[f"{cluster_name}_centrality_scores"]
-            if do_aggregation:
-                temp_cent = cent_df.copy()
-                temp_cent["Sample"] = sample
-                temp_cent["Condition"] = cond
-                temp_cent["Cluster"] = temp_cent.index
-                agg_centrality.append(temp_cent)
-
-            cent_json_path = sample_dir / f"centrality_scores_{sample}.json"
-            cent_df.replace([np.inf, -np.inf, np.nan], None).to_json(
-                cent_json_path, orient="index"
+        # 2. Centrality
+        cent_df = _compute_and_plot_centrality(
+            adata_sample, cluster_name, sample_dir, sample, cent_figsize
+        )
+        if do_aggregation:
+            temp_cent = cent_df.copy()
+            temp_cent["Sample"], temp_cent["Condition"], temp_cent["Cluster"] = (
+                sample,
+                cond,
+                temp_cent.index,
             )
-        except Exception as e:
-            logger.warning(f"Failed to export Centrality JSON: {e}")
+            agg_centrality.append(temp_cent)
 
-        with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
-            sq.pl.centrality_scores(
-                adata_sample, cluster_key=cluster_name, figsize=cent_figsize
-            )
-            plt.savefig(
-                sample_dir / f"centrality_scores_{sample}.png",
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close()
+        # 3. Co-occurrence (Subsampled)
+        adata_sub = sc.pp.subsample(adata_sample, fraction=0.5, copy=True)
+        sq.gr.spatial_neighbors(adata_sub, coord_type="generic", delaunay=True)
+        _compute_and_plot_co_occurrence(
+            adata_sub, cluster_name, sample_dir, sample, co_figsize
+        )
 
-        # CO-OCCURRENCE
-        logger.info("Computing co-occurrence probability...")
-        adata_subsample = sc.pp.subsample(adata_sample, fraction=0.5, copy=True)
-        sq.gr.spatial_neighbors(adata_subsample, coord_type="generic", delaunay=True)
+        # 4. Neighborhood
+        aligned_matrix = _compute_and_plot_nhood(
+            adata_sample,
+            cluster_name,
+            sample_dir,
+            sample,
+            nhood_figsize,
+            valid_clusters,
+        )
+        if do_aggregation:
+            agg_nhood[cond].append(aligned_matrix)
 
-        adata_subsample.obs[cluster_name] = adata_subsample.obs[cluster_name].cat.remove_unused_categories()
-        
-        # Ensure at least 2 categories remain to do co-occurrence, otherwise just skip this step
-        if len(adata_subsample.obs[cluster_name].cat.categories) < 2:
-            logger.warning(f"Not enough valid cell types left after subsampling {sample}. Skipping co-occurrence.")
-        else:
-            sq.gr.co_occurrence(
-                adata_subsample, cluster_key=cluster_name, n_jobs=16, backend="loky"
-            )
-            valid_clusters_sub = list(adata_subsample.obs[cluster_name].cat.categories)
-
-            try:
-                co_occ_data = adata_subsample.uns[f"{cluster_name}_co_occurrence"]
-                distances = co_occ_data["interval"].tolist()
-                occ_matrix = co_occ_data["occ"]
-
-                co_occ_export = {
-                    "clusters": valid_clusters_sub,
-                    "distances": distances,
-                    "probabilities": {},
-                }
-                for i, c1 in enumerate(valid_clusters_sub):
-                    for j, c2 in enumerate(valid_clusters_sub):
-                        probs = np.nan_to_num(occ_matrix[i, j, :], nan=0.0).tolist()
-                        co_occ_export["probabilities"][f"{c1}|{c2}"] = probs
-
-                with open(sample_dir / f"co_occurrence_{sample}.json", "w") as f:
-                    json.dump(co_occ_export, f)
-            except Exception as e:
-                logger.warning(f"Failed to export Co-occurrence JSON: {e}")
-
-            with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
-                sq.pl.co_occurrence(
-                    adata_subsample,
-                    cluster_key=cluster_name,
-                    clusters=valid_clusters_sub,
-                    figsize=co_figsize,
-                )
-                plt.savefig(
-                    sample_dir / f"co_occurrence_{sample}.png", dpi=300, bbox_inches="tight"
-                )
-                plt.close()
-
-        # NEIGHBORHOOD ENRICHMENT
-        logger.info("Performing neighborhood enrichment analysis...")
-        sq.gr.nhood_enrichment(adata_sample, cluster_key=cluster_name)
-
-        try:
-            nhood_zscore = adata_sample.uns[f"{cluster_name}_nhood_enrichment"][
-                "zscore"
-            ]
-            clusters = list(adata_sample.obs[cluster_name].cat.categories)
-
-            if do_aggregation:
-                aligned_matrix = np.full((num_clusters, num_clusters), np.nan)
-                for i, c1 in enumerate(clusters):
-                    for j, c2 in enumerate(clusters):
-                        if c1 in valid_clusters and c2 in valid_clusters:
-                            gi, gj = valid_clusters.index(c1), valid_clusters.index(c2)
-                            aligned_matrix[gi, gj] = nhood_zscore[i, j]
-                agg_nhood[cond].append(aligned_matrix)
-
-            nhood_export = {
-                "clusters": clusters,
-                "zscores": np.nan_to_num(nhood_zscore, nan=0.0).tolist(),
-            }
-            with open(sample_dir / f"nhood_enrichment_{sample}.json", "w") as f:
-                json.dump(nhood_export, f)
-        except Exception as e:
-            logger.warning(f"Failed to export Neighborhood Enrichment JSON: {e}")
-
-        with plt.rc_context({"figure.facecolor": "white", "axes.facecolor": "white"}):
-            fig, ax = plt.subplots(1, 1, figsize=nhood_figsize, facecolor="white")
-            sq.pl.nhood_enrichment(
-                adata_sample,
-                cluster_key=cluster_name,
-                title=f"Neighborhood enrichment ({sample})",
-                ax=ax,
-            )
-            plt.savefig(
-                sample_dir / f"nhood_enrichment_{sample}.png",
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close()
-
-        # MORAN'S I
+        # 5. Moran's I
         logger.info("Calculating Moran's I...")
         sq.gr.spatial_autocorr(
-            adata_subsample, mode="moran", use_raw=True, n_perms=100, n_jobs=1
+            adata_sub, mode="moran", use_raw=True, n_perms=100, n_jobs=1
         )
-        moran_df = adata_subsample.uns["moranI"]
+        moran_df = adata_sub.uns["moranI"]
+        moran_df.to_csv(sample_dir / f"moranI_results_{sample}.csv", index=True)
 
         if do_aggregation:
             temp_moran = moran_df.copy()
-            temp_moran["Sample"] = sample
-            temp_moran["Condition"] = cond
-            temp_moran["Gene"] = temp_moran.index
+            temp_moran["Sample"], temp_moran["Condition"], temp_moran["Gene"] = (
+                sample,
+                cond,
+                temp_moran.index,
+            )
             agg_moran.append(temp_moran)
 
-        moran_df.to_csv(sample_dir / f"moranI_results_{sample}.csv", index=True)
+        # Garbage Collection (The Memory Fix)
+        del adata_sample, adata_sub
+        gc.collect()
         logger.info(f"Finished sample {sample}.")
 
-    # --- POST-LOOP CONDITION-LEVEL AGGREGATION & COMPARISONS ---
+    # --- CONDITION-LEVEL AGGREGATION ---
     if do_aggregation:
         logger.info("=== Running Condition-Level Aggregations ===")
         agg_dir = module_dir / "Aggregated_Results"
@@ -283,7 +325,7 @@ def run_spatial_statistics(
         mean_nhoods = {}
         for condition, matrices in agg_nhood.items():
             if matrices:
-                stacked = np.stack(matrices, axis=0)  # Now guaranteed to work!
+                stacked = np.stack(matrices, axis=0)
                 mean_matrix = np.nanmean(stacked, axis=0)
                 mean_nhoods[condition] = mean_matrix
 

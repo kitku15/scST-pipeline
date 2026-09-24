@@ -3,6 +3,7 @@ import math
 import warnings
 from logging import getLogger
 from pathlib import Path
+from typing import Dict
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -10,40 +11,29 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 import squidpy as sq
+from anndata import AnnData
 from matplotlib.colors import ListedColormap
 
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
-def get_dynamic_palette(adata, column_name):
-    """
-    Automatically assigns consistent colors to categories in adata.obs[column_name].
-    Ensures 'Unknown' is always grey, and colors remain consistent across datasets.
-    """
-    # Get unique categories (handling pandas Categorical safely)
+def get_dynamic_palette(adata: AnnData, column_name: str) -> Dict[str, str]:
+    """Generates a consistent color palette based on string hashing."""
     categories = adata.obs[column_name].unique()
-
-    # Use ONE large palette so the color pool never changes
     base_colors = list(sc.pl.palettes.default_102)
     palette_dict = {}
 
     for cat in categories:
-        # Handle actual NaN values safely
         if pd.isna(cat):
             palette_dict[cat] = "#d3d3d3"
             continue
 
         cat_str = str(cat)
-
         if cat_str.lower() in ["unknown", "low confidence", "nan"]:
-            palette_dict[cat] = "#d3d3d3"  # Light Grey
+            palette_dict[cat] = "#d3d3d3"
         else:
-            # Create a deterministic integer from the category name string
-            # We use MD5 because Python's built-in hash() changes every time you restart Python
             hash_int = int(hashlib.md5(cat_str.encode("utf-8")).hexdigest(), 16)
-
-            # Map that integer to our color palette
             palette_dict[cat] = base_colors[hash_int % len(base_colors)]
 
     return palette_dict
@@ -153,46 +143,35 @@ def summary_celltypecomp(
 
 
 def plot_spatialplotsplit(
-    adata, spatial_key, sample_key, celltype_col, output_file, n_cols=4
-):
-    """
-    Makes a spatial plot for all celltypes highlighting regions of that specific cell type.
-    Creates ONE separate image file per sample (slide) to prevent coordinate overlap.
-    """
-
-    # Ensure output_file is a Path object so we can easily manipulate the filename
+    adata: AnnData,
+    spatial_key: str,
+    sample_key: str,
+    celltype_col: str,
+    output_file: str,
+    n_cols: int = 4,
+) -> None:
+    """Creates split spatial plots per celltype."""
     out_path = Path(output_file)
 
     for sample in adata.obs[sample_key].unique():
-        # Create a deep copy of the subset so we can safely add columns like "highlight"
         adata_sample = adata[adata.obs[sample_key] == sample].copy()
+        cell_types = sorted(adata.obs[celltype_col].astype(str).unique())
 
-        # 1. Get all unique cell types from the ORIGINAL adata so legends/colors are consistent
-        # even if a sample happens to be missing one rare cell type.
-        cell_types = adata.obs[celltype_col].astype(str).unique()
-        cell_types = sorted(cell_types)
-
-        # 2. Set up the matplotlib grid
         n_types = len(cell_types)
         n_rows = math.ceil(n_types / n_cols)
 
-        # Create the figure and axes
         fig, axes = plt.subplots(
             n_rows, n_cols, figsize=(n_cols * 5, n_rows * 2.5), dpi=300
         )
-        axes = axes.flatten()
+        axes = np.atleast_1d(axes).flatten()  # Ensure safety for 1x1 subplots
 
-        # 3. Loop through each cell type and plot
         for i, cell_type in enumerate(cell_types):
             ax = axes[i]
-
-            # Check against the celltype_col
             adata_sample.obs["highlight"] = np.where(
                 adata_sample.obs[celltype_col].astype(str) == cell_type,
                 cell_type,
                 "other",
             )
-
             adata_sample.obs["highlight"] = adata_sample.obs["highlight"].astype(
                 "category"
             )
@@ -203,7 +182,6 @@ def plot_spatialplotsplit(
             if "highlight_colors" in adata_sample.uns:
                 del adata_sample.uns["highlight_colors"]
 
-            # Plot on the specific axis using the SUBSET data
             sq.pl.spatial_scatter(
                 adata_sample,
                 color="highlight",
@@ -218,21 +196,18 @@ def plot_spatialplotsplit(
                 title=f"{cell_type} (Sample: {sample})",
             )
 
-        # 4. Clean up any empty subplots
+        # Safely hide empty subplots without IndexError
         for i in range(n_types, len(axes)):
-            axes[i].set_visible(False)
-            axes[i].axis("off")
+            if i < len(axes):
+                axes[i].set_visible(False)
+                axes[i].axis("off")
 
-        # 5. Finalize and show
         plt.tight_layout()
-
-        # Create a dynamic filename: e.g., "spatialplotsplit_leiden_CPIc_1.png"
         dynamic_out_file = (
             out_path.parent / f"{out_path.stem}_{sample}{out_path.suffix}"
         )
-
         plt.savefig(dynamic_out_file)
-        plt.close(fig)  # Crucial: Close the figure so memory doesn't explode!
+        plt.close(fig)
 
         logger.info(f"Saved spatial split plot for {sample} to {dynamic_out_file}")
 
@@ -244,14 +219,18 @@ def plot_umapspatialscatter(
     This plots a spatial scatter plot next to a UMAP in the same figure.
     Creates ONE separate image file per sample.
     """
-    
+
     if adata.obs[celltype_col].isna().any():
-        logger.info(f"Filling NaN values in '{celltype_col}' with 'Unknown' to prevent plotting errors.")
-        
+        logger.info(
+            f"Filling NaN values in '{celltype_col}' with 'Unknown' to prevent plotting errors."
+        )
+
         # Add "Unknown" to categories if it doesn't exist
         if "Unknown" not in adata.obs[celltype_col].cat.categories:
-            adata.obs[celltype_col] = adata.obs[celltype_col].cat.add_categories("Unknown")
-            
+            adata.obs[celltype_col] = adata.obs[celltype_col].cat.add_categories(
+                "Unknown"
+            )
+
         # Replace the NaN values
         adata.obs[celltype_col] = adata.obs[celltype_col].fillna("Unknown")
 

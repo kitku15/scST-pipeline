@@ -1,0 +1,123 @@
+import os
+import sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
+# Import the hashing function we just made
+from config import generate_run_id
+
+# 1. Load config
+CONFIG_FILE = os.environ.get("RECODE_CONFIG", "configs/config_pCosMx_ds.toml")
+with open(CONFIG_FILE, "rb") as f:
+    cfg = tomllib.load(f)
+
+ANALYSIS_NAME = cfg.get("project", {}).get("analysis_name", "default")
+ANALYSIS_DIR = f"analysis_{ANALYSIS_NAME}"
+MODULES_TO_RUN = cfg.get("pipeline", {}).get("modules", [])
+
+# 2. Generate Parameter Hashes for tracking
+MODS = cfg.get("modules", {})
+HASH_DR = generate_run_id(MODS.get("DimensionReduction", {}))
+HASH_ANNO = generate_run_id(MODS.get("Annotate", {}))
+HASH_VIEW = generate_run_id(MODS.get("ViewImages", {}))
+HASH_STAT = generate_run_id(MODS.get("SpatialStat", {}))
+HASH_MUSPAN = generate_run_id(MODS.get("MuSpan", {}))
+HASH_DECOUP = generate_run_id(MODS.get("Decoupler", {}))
+HASH_CPDB = generate_run_id(MODS.get("Cellphonedb", {}))
+HASH_LIANA = generate_run_id(MODS.get("LIANA", {}))
+HASH_CAUSAL = generate_run_id(MODS.get("LIANA_Causal", {}))
+HASH_DE = generate_run_id(MODS.get("DEAnalysis", {}))
+HASH_WEB = generate_run_id(MODS.get("WebVisPrep", {}))
+
+TARGETS = []
+if any(m.startswith("1b_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/1b_MergeData/.done_merge")
+if any(m.startswith("2_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/2_DimensionReduction/.done_{HASH_DR}")
+if any(m.startswith("3_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}")
+if any(m.startswith("4_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/4_ViewImages/{HASH_VIEW}/.done")
+if any(m.startswith("5_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/5_SpatialStat/{HASH_STAT}/.done")
+if any(m.startswith("6_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/6_MuSpan/{HASH_MUSPAN}/.done")
+if any(m.startswith("7_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}")
+if any(m.startswith("8_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/8_Cellphonedb/{HASH_CPDB}/.done")
+if any(m.startswith("8b_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/8b_LIANA/{HASH_LIANA}/.done")
+if any(m.startswith("8c_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/8c_LIANA_Causal/{HASH_CAUSAL}/.done")
+if any(m.startswith("9_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/9_DEAnalysis/{HASH_DE}/.done")
+if any(m.startswith("10_") for m in MODULES_TO_RUN): TARGETS.append(f"{ANALYSIS_DIR}/10_WebVis/{HASH_WEB}/.done")
+
+rule all:
+    input: TARGETS
+
+# --- LINEAR UPSTREAM RULES ---
+rule mod1b_merge_data:
+    output: touch(f"{ANALYSIS_DIR}/1b_MergeData/.done_merge")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 1b"
+
+def get_mod2_input(wildcards):
+    return f"{ANALYSIS_DIR}/1b_MergeData/.done_merge" if any(m.startswith("1b_") for m in MODULES_TO_RUN) else []
+
+rule mod2_dimension_reduction:
+    input: get_mod2_input
+    output: touch(f"{ANALYSIS_DIR}/2_DimensionReduction/.done_{HASH_DR}")
+    benchmark: f"{ANALYSIS_DIR}/logs/benchmarks/mod2_dr_{HASH_DR}.txt"
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 2"
+
+rule mod3_annotate:
+    input: f"{ANALYSIS_DIR}/2_DimensionReduction/.done_{HASH_DR}"
+    output: touch(f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 3"
+
+# --- PARALLEL FAN-OUT RULES (Artifact Modules write to Hash Subfolders!) ---
+rule mod4_view_images:
+    input: f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}"
+    output: touch(f"{ANALYSIS_DIR}/4_ViewImages/{HASH_VIEW}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 4"
+
+rule mod5_spatial_stat:
+    input: f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}"
+    output: touch(f"{ANALYSIS_DIR}/5_SpatialStat/{HASH_STAT}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 5"
+
+rule mod6_muspan:
+    input: f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}"
+    output: touch(f"{ANALYSIS_DIR}/6_MuSpan/{HASH_MUSPAN}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 6"
+
+rule mod7_decoupler:
+    input: f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}"
+    output: touch(f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 7"
+
+# --- DOWNSTREAM ---
+rule mod8_cellphonedb:
+    input: 
+        f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}",
+        f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}"
+    output: touch(f"{ANALYSIS_DIR}/8_Cellphonedb/{HASH_CPDB}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 8"
+
+rule mod8b_liana:
+    input: 
+        f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}",
+        f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}"
+    output: touch(f"{ANALYSIS_DIR}/8b_LIANA/{HASH_LIANA}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 8b"
+
+rule mod8c_liana_causal:
+    input: 
+        f"{ANALYSIS_DIR}/3_Annotate/.done_{HASH_ANNO}",
+        f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}"
+    output: touch(f"{ANALYSIS_DIR}/8c_LIANA_Causal/{HASH_CAUSAL}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 8c"
+
+rule mod9_de_analysis:
+    input: f"{ANALYSIS_DIR}/7_Decoupler/.done_{HASH_DECOUP}"
+    output: touch(f"{ANALYSIS_DIR}/9_DEAnalysis/{HASH_DE}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 9"
+
+# --- TERMINAL SINK ---
+rule mod10_web_vis:
+    input: [t for t in TARGETS if not t.startswith(f"{ANALYSIS_DIR}/10_")]
+    output: touch(f"{ANALYSIS_DIR}/10_WebVis/{HASH_WEB}/.done")
+    shell: "python Modules/__main__.py {CONFIG_FILE} --modules 10"

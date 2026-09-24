@@ -644,6 +644,7 @@ six==1.17.0
     #   python-dateutil
 slicerator==1.1.0
     # via pims
+snakemake==9.27.0
 soupsieve==2.7
     # via beautifulsoup4
 spatial-image==1.2.1

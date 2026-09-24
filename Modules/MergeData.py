@@ -1,65 +1,61 @@
-"""Module to merge multiple Spatial Transcriptomics Slides (datasets)."""
-
-import warnings
-from logging import getLogger
+import logging
 from pathlib import Path
-
 import anndata as ad
-import scanpy as sc
 
-warnings.filterwarnings("ignore")
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-def run_merge(input_files, slide_names, module_dir):
-    """
-    Merges multiple AnnData objects into a single AnnData object.
-    Prefixes cell IDs with slide names to ensure global uniqueness.
-    """
+def run_merge(input_files: list[str], slide_names: list[str], module_dir: Path):
+    """Merges multiple Spatial AnnDatas in memory."""
     module_dir = Path(module_dir)
     module_dir.mkdir(parents=True, exist_ok=True)
 
-    adatas = []
+    adatas_to_merge = {}
 
-    # Prep each dataset
-    for i, file_path in enumerate(input_files):
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"Cannot find input file: {file_path}")
+    for file_path, slide_id in zip(input_files, slide_names):
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Cannot find input file: {path}")
 
-        logger.info(f"Loading dataset {i + 1}/{len(input_files)}: {file_path}")
-        adata = sc.read_h5ad(file_path)
-        slide_id = slide_names[i]
+        logger.info(f"Loading dataset for merge: {slide_id}")
 
-        # Add metadata column
-        adata.obs["slide_id"] = slide_id
+        # We load into memory (removed backed="r" to avoid anndata slicing bugs)
+        adata = ad.read_h5ad(path)
 
-        # Make Cell IDs globally unique
-        adata.obs_names = [f"{slide_id}_{cell_id}" for cell_id in adata.obs_names]
+        # Safety check: If QC filtered out ALL cells, skip this slide
+        if adata.n_obs == 0:
+            logger.warning(f"Slide {slide_id} has 0 cells after QC! Skipping.")
+            continue
 
-        # Make Sample IDs globally unique
+        logger.info(
+            f"Slide {slide_id} loaded: {adata.n_obs} cells, {adata.n_vars} genes."
+        )
+
+        # Ensure sample IDs are globally unique across slides
         if "sample_id" in adata.obs.columns:
-            adata.obs["sample_id"] = slide_id + "_" + adata.obs["sample_id"].astype(str)
+            adata.obs["sample_id"] = f"{slide_id}_" + adata.obs["sample_id"].astype(str)
 
-        # Ensure gene names are strings
         adata.var_names = adata.var_names.astype(str)
 
-        adatas.append(adata)
+        adatas_to_merge[slide_id] = adata
+
+    if not adatas_to_merge:
+        raise ValueError(
+            "No valid datasets remaining to merge! All datasets had 0 cells."
+        )
 
     logger.info("Concatenating datasets...")
-    # join='inner' ensures only genes present in all slides are kept
-    adata_merged = ad.concat(adatas, join="inner", merge="same")
 
-    # Verify and log the merge
-    logger.info(f"Total cells: {adata_merged.n_obs}")
-    logger.info(f"Total genes: {adata_merged.n_vars}")
-    logger.info("Cells per slide:")
-    for slide, count in adata_merged.obs["slide_id"].value_counts().items():
-        logger.info(f"  {slide}: {count}")
+    # anndata automatically uses the dictionary keys (slide_id) as the categories.
+    adata_merged = ad.concat(
+        adatas_to_merge, join="inner", merge="same", label="slide_id", index_unique="_"
+    )
 
-    # Save the merged dataset
     out_path = module_dir / "adata.h5ad"
+    logger.info(f"Writing merged matrix to disk: {out_path}")
     adata_merged.write_h5ad(out_path)
-    logger.info(f"Merged dataset saved to {out_path}")
 
+    logger.info(
+        f"Merged dataset successfully saved: {adata_merged.n_obs} total cells, {adata_merged.n_vars} genes"
+    )
     return out_path

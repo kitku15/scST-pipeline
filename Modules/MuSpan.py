@@ -95,13 +95,4 @@ def run_muspan(
         # Make xenium figure
         xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict)
 
-    # Save domain (do we need to this takes ages?)=========
-    # ms.io.save_domain(
-    #     domain,
-    #     name_of_file=f"muspan_object_{domain_name.replace(' ', '_')}",
-    #     path_to_save=str(out_dir),
-    # )
-    # logger.info(f"Domain saved successfully to {out_dir}")
-    # =======================================================
-
     return domain

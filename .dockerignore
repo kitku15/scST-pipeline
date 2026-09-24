@@ -9,7 +9,14 @@ analysis_*/
 work/
 results*/
 
-# Python cache
+# Stray root data files
+*.RDS
+*.rds
+*.mtx
+*.csv
+*.ipynb
+
+# Python cache and other folders
 __pycache__/
 ignore/
 results/

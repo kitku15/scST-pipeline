@@ -4,41 +4,41 @@ import gc
 import warnings
 from logging import getLogger
 from pathlib import Path
+from typing import List, Optional, Union
 
 import anndata as ad
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
-import scvi
 import squidpy as sq
 import torch
+from anndata import AnnData
+import scvi
 from scvi.external import SCVIVA
 
 matplotlib.use("Agg")
-
-
 warnings.filterwarnings("ignore")
 logger = getLogger(__name__)
 
 
 def run_scanvi_transfer(
-    adata_query_full,  # <--- The untouched 10GB original object
-    spatial_key,
-    ref_path,
-    query_batch_key,
-    scviva_labels_key,
-    scviva_embedding_key,
-    ref_batch_key=None,
-    query_layer="counts",
-    accelerator="cpu",
-    devices="auto",
-    scanvi_epochs=100,
-):
+    adata_query_full: AnnData,
+    spatial_key: str,
+    ref_path: str,
+    query_batch_key: str,
+    scviva_labels_key: str,
+    scviva_embedding_key: str,
+    ref_batch_key: Optional[str] = None,
+    reference_covariates: Optional[dict] = None,
+    query_layer: str = "counts",
+    accelerator: str = "cpu",
+    devices: Union[str, int] = "auto",
+    scanvi_epochs: int = 100,
+) -> AnnData:
     logger.info("--- Initiating scANVI Reference Mapping (scArches) ---")
     adata_query = adata_query_full.copy()
 
-    # Move raw counts to .X for the query copy
     if query_layer and query_layer in adata_query.layers:
         adata_query.X = adata_query.layers[query_layer].copy()
 
@@ -104,25 +104,55 @@ def run_scanvi_transfer(
         )
         adata_query.obs[ref_batch_key] = adata_query.obs[query_batch_key].astype(str)
 
+    # 2.9 APPLY REQUIRED REFERENCE COVARIATES (The fix for hardcoding)
     import json
 
     try:
-        with open(Path(model_path) / "_scvi_required_metadata.json", "r") as f:
-            meta = json.load(f)
-            if "tissue_in_vivo" in str(meta):
-                adata_query.obs["tissue_in_vivo"] = "large_intestine"
-    except Exception:
-        pass
+        meta_path = Path(model_path) / "_scvi_required_metadata.json"
+        if meta_path.exists():
+            with open(meta_path, "r") as f:
+                meta = json.load(f)
+
+            # Find which obs columns the reference model requires
+            required_obs = []
+            if isinstance(meta, dict) and "obs" in meta:
+                required_obs = list(meta["obs"].keys())
+            else:
+                # Fallback string search if structure is different
+                meta_str = str(meta)
+                if "tissue_in_vivo" in meta_str:
+                    required_obs.append("tissue_in_vivo")
+                if "assay" in meta_str:
+                    required_obs.append("assay")
+                if "donor" in meta_str:
+                    required_obs.append("donor")
+
+            # Apply user-provided covariates or fallbacks
+            for req_col in required_obs:
+                if req_col not in adata_query.obs.columns:
+                    # Use user-provided mapping if available
+                    if reference_covariates and req_col in reference_covariates:
+                        val = reference_covariates[req_col]
+                        logger.info(
+                            f"Reference model expects '{req_col}'. Applying user config value: '{val}'."
+                        )
+                        adata_query.obs[req_col] = val
+                    else:
+                        # Fallback to "unspecified" to prevent crashes
+                        logger.warning(
+                            f"Reference model expects '{req_col}', but it's missing and not in config. Setting to 'unspecified'."
+                        )
+                        adata_query.obs[req_col] = "unspecified"
+
+    except Exception as e:
+        logger.debug(f"Reference model metadata inspection skipped/failed: {e}")
 
     # 3. Prepare Query Data
-    logger.info("Preparing query data to match reference model features...")
-    scvi.model.SCANVI.prepare_query_anndata(adata_query, model_path)
+    import scvi
 
-    # 4. Load Query Model (scArches architectural surgery)
-    logger.info("Loading query data into pre-trained scANVI model...")
+    scvi.model.SCANVI.prepare_query_anndata(adata_query, model_path)
     scanvi_query = scvi.model.SCANVI.load_query_data(adata_query, model_path)
 
-    # 5. Train only the query adapters
     logger.info("Training query mapping (scArches)...")
     scanvi_query.train(
         max_epochs=scanvi_epochs,
@@ -131,7 +161,7 @@ def run_scanvi_transfer(
         devices=devices,
     )
 
-    logger.info("Extracting scANVI predictions and mapping back to ORIGINAL object...")
+    logger.info("Extracting scANVI predictions...")
     adata_query_full.obs[scviva_labels_key] = scanvi_query.predict()
     adata_query_full.obsm[scviva_embedding_key] = (
         scanvi_query.get_latent_representation()
@@ -139,10 +169,7 @@ def run_scanvi_transfer(
 
     del adata_query
     del scanvi_query
-
     gc.collect()
-
-    logger.info("--- scANVI Label Transfer Complete ---")
 
     return adata_query_full
 
@@ -278,9 +305,6 @@ def run_scanvi_joint(
         scviva_embedding_key
     ]
 
-    # Cleanup memory
-    # del adata_query
-    # del ref_adata
     del adata_joint
     gc.collect()
 
@@ -290,6 +314,7 @@ def run_scanvi_joint(
 
 def run_SCVIVA(
     adata,
+    module_dir,
     scviva_batch_key,
     scviva_sample_key,
     spatial_key,
@@ -302,6 +327,7 @@ def run_SCVIVA(
     ref_batch_key=None,
     ref_label_key=None,
     ref_layer="X",
+    reference_covariates: Optional[dict] = None,
     scvi_epochs=400,
     scanvi_epochs=200,
     scviva_batch_size=512,
@@ -395,6 +421,7 @@ def run_SCVIVA(
                 scviva_labels_key=scviva_labels_key,
                 scviva_embedding_key=scviva_embedding_key,
                 ref_batch_key=ref_batch_key,
+                reference_covariates=reference_covariates,
                 query_layer=scviva_layer,
                 accelerator=accelerator,
                 devices=devices,
@@ -405,13 +432,26 @@ def run_SCVIVA(
         # standard scvi -> scviva
         logger.info("Run Spatially-Unaware Baseline (scVI)")
 
-        scvi.model.SCVI.setup_anndata(
-            adata, layer=scviva_layer, batch_key=scviva_batch_key
-        )
-        scvi_model = scvi.model.SCVI(adata, n_layers=n_layers, n_latent=n_latent)
-        scvi_model.train(
-            max_epochs=scvi_epochs, accelerator=accelerator, devices=devices
-        )
+        scvi_model_path = module_dir / "scvi_model"
+
+        if scvi_model_path.exists():
+            logger.info(f"Found existing scVI model at {scvi_model_path}. Loading...")
+            scvi.model.SCVI.setup_anndata(
+                adata, layer=scviva_layer, batch_key=scviva_batch_key
+            )
+            scvi_model = scvi.model.SCVI.load(str(scvi_model_path), adata=adata)
+        else:
+            logger.info("Run Spatially-Unaware Baseline (scVI)")
+            scvi.model.SCVI.setup_anndata(
+                adata, layer=scviva_layer, batch_key=scviva_batch_key
+            )
+            scvi_model = scvi.model.SCVI(adata, n_layers=n_layers, n_latent=n_latent)
+            scvi_model.train(
+                max_epochs=scvi_epochs, accelerator=accelerator, devices=devices
+            )
+
+            logger.info(f"Saving trained scVI model to {scvi_model_path}...")
+            scvi_model.save(str(scvi_model_path), overwrite=True)
 
         # Extract the clean, batch-corrected baseline embedding from scVI
         adata.obsm["X_scVI"] = scvi_model.get_latent_representation()
@@ -431,40 +471,41 @@ def run_SCVIVA(
         scviva_embedding_key = "X_scVI"
 
     logger.info("Run Spatially-Aware scVIVA")
-
     setup_kwargs = {
         "labels_key": scviva_labels_key,
         "cell_coordinates_key": spatial_key,
         "expression_embedding_key": scviva_embedding_key,
-        "sample_key": scviva_sample_key,  # sample key for scviva to ensure spatial correlation stays within samples
+        "sample_key": scviva_sample_key,
     }
 
     logger.info("Preprocessing AnnData for scVIVA (computing spatial niche graphs)...")
-    SCVIVA.preprocessing_anndata(
-        adata,
-        k_nn=scviva_spatial_knn,
-        **setup_kwargs,
-    )
+    SCVIVA.preprocessing_anndata(adata, k_nn=scviva_spatial_knn, **setup_kwargs)
 
     logger.info("Setting up AnnData for scVIVA...")
     SCVIVA.setup_anndata(
-        adata,
-        layer=scviva_layer,
-        batch_key=scviva_batch_key,
-        **setup_kwargs,
+        adata, layer=scviva_layer, batch_key=scviva_batch_key, **setup_kwargs
     )
 
-    logger.info("Training scVIVA model...")
-    nichevae = SCVIVA(adata)
-    nichevae.train(
-        max_epochs=scviva_epochs,
-        accelerator=accelerator,
-        devices=devices,
-        early_stopping=True,
-        check_val_every_n_epoch=10,
-        batch_size=scviva_batch_size,
-        plan_kwargs={"lr": 5e-4},
-    )
+    # 2. SCVIVA CHECKPOINT LOGIC
+    scviva_model_path = module_dir / "scviva_model"
+
+    if scviva_model_path.exists():
+        logger.info(f"Found existing scVIVA model at {scviva_model_path}. Loading...")
+        nichevae = SCVIVA.load(str(scviva_model_path), adata=adata)
+    else:
+        logger.info("Training scVIVA model...")
+        nichevae = SCVIVA(adata)
+        nichevae.train(
+            max_epochs=scviva_epochs,
+            accelerator=accelerator,
+            devices=devices,
+            early_stopping=True,
+            check_val_every_n_epoch=10,
+            batch_size=scviva_batch_size,
+            plan_kwargs={"lr": 5e-4},
+        )
+        logger.info(f"Saving trained scVIVA model to {scviva_model_path}...")
+        nichevae.save(str(scviva_model_path), overwrite=True)
 
     logger.info("Extracting scVIVA latent representation...")
     adata.obsm["X_scVIVA"] = nichevae.get_latent_representation()
@@ -474,84 +515,45 @@ def run_SCVIVA(
 
 
 def run_dimension_reduction(
-    data_type,
-    input_adata_path,
-    module_dir,
-    module_name,
-    n_neighbors_list,
-    resolution_list,
-    cluster_name,
-    n_comps=None,
-    use_scviva=True,
-    umap_latent="X_scVI",
-    scviva_layer="counts",
-    scviva_batch_key=None,
-    scviva_sample_key=None,
-    scviva_spatial_knn=20,
-    scviva_epochs=400,
-    run_pca=False,
-    use_scanvi=False,
-    scanvi_mode="scarches",
-    reference_adata_path=None,
-    reference_batch_key=None,
-    reference_label_key=None,
-    reference_layer="X",
-    scvi_epochs=400,
-    scanvi_epochs=200,
-    scviva_batch_size=512,
-    n_latent=30,
-    n_layers=2,
-    pre_cluster_res=1.0,
-    dot_size=0.5,
-):
-    """
-    Runs the complete dimension reduction, clustering, and visualization workflow.
+    data_type: str,
+    input_adata_path: Union[str, Path],
+    module_dir: Path,
+    module_name: str,
+    n_neighbors_list: Union[int, List[int]],
+    resolution_list: Union[float, List[float]],
+    cluster_name: str,
+    n_comps: Optional[int] = None,
+    use_scviva: bool = True,
+    umap_latent: str = "X_scVI",
+    scviva_layer: str = "counts",
+    scviva_batch_key: Optional[str] = None,
+    scviva_sample_key: Optional[str] = None,
+    scviva_spatial_knn: int = 20,
+    scviva_epochs: int = 400,
+    run_pca: bool = False,
+    use_scanvi: bool = False,
+    scanvi_mode: str = "scarches",
+    reference_adata_path: Optional[str] = None,
+    reference_batch_key: Optional[str] = None,
+    reference_label_key: Optional[str] = None,
+    reference_layer: str = "X",
+    reference_covariates: Optional[dict] = None,
+    scvi_epochs: int = 400,
+    scanvi_epochs: int = 200,
+    scviva_batch_size: int = 512,
+    n_latent: int = 30,
+    n_layers: int = 2,
+    pre_cluster_res: float = 1.0,
+    dot_size: float = 0.5,
+) -> None:
+    """Runs the complete dimension reduction workflow."""
 
-    This function orchestrates the loading of spatial transcriptomics data, optional
-    PCA computation, execution of the scVIVA pipeline, and iterative Leiden clustering
-    and UMAP embeddings across multiple neighbor and resolution parameters. It handles
-    dynamically saving output figures and writes the final annotated data matrix to disk.
-
-    Args:
-        data_type (str): The platform/type of the spatial data (e.g., "CosMx", "Xenium").
-            This determines which default spatial coordinate key to use.
-        input_adata_path (str or pathlib.Path): File path to the input AnnData (.h5ad) file.
-        module_dir (pathlib.Path): Output directory where generated figures and the
-            updated AnnData file will be saved.
-        module_name (str): Identifier name for the module.
-        n_comps (int): Number of principal components to compute (used only if `run_pca` is True).
-        n_neighbors_list (int or list of int): Number of neighbors (or a list of neighbor
-            values) to use for computing the neighborhood graph.
-        resolution_list (float or list of float): Resolution values (or a list of values)
-            to use for Leiden clustering.
-        cluster_name (str): Base prefix to use for the output cluster column names
-            stored in `adata.obs`.
-        scviva_layer (str, optional): Key in `adata.layers` containing raw integer counts,
-            which is required by scVI. Defaults to "counts".
-        scviva_batch_key (str, optional): Column in `adata.obs` indicating batch or
-            sample labels. Defaults to None.
-        scviva_spatial_knn (int, optional): Number of spatial neighbors for the scVIVA
-            graph construction. Defaults to 20.
-        scviva_epochs (int, optional): Maximum training epochs for the scVIVA model.
-            Defaults to 400.
-        run_pca (bool, optional): If True, computes and plots a PCA variance ratio diagram
-            before running scVIVA. Defaults to False.
-
-    Returns:
-        None: The function does not return an object; instead, it saves the modified
-            AnnData object directly to disk within `module_dir`.
-    """
-
-    # Ensure inputs are lists for iteration
     if not isinstance(n_neighbors_list, list):
         n_neighbors_list = [n_neighbors_list]
     if not isinstance(resolution_list, list):
         resolution_list = [resolution_list]
 
-    if data_type == "CosMx":
-        spatial_key = "global"
-    elif data_type == "Xenium":
-        spatial_key = "spatial"
+    spatial_key = "global" if data_type == "CosMx" else "spatial"
 
     cluster_palette_25 = [
         "#be84bf",
@@ -600,58 +602,41 @@ def run_dimension_reduction(
         "#fdb462",
     ]
 
-    # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
-
-    # Set the directory where to save the ScanPy figures
     sc.settings.figdir = module_dir
     sc.set_figure_params(
         facecolor="white", transparent=False, dpi=300, figsize=(12, 12)
     )
 
-    # Import data
     logger.info("Loading data...")
-    input_adata_path = Path(input_adata_path)
-    adata = sc.read_h5ad(input_adata_path)
+    adata = sc.read_h5ad(Path(input_adata_path))
 
-    # Ensure layer exists for scvi
     if scviva_layer not in adata.layers:
-        logger.warning(
-            f"Layer '{scviva_layer}' not found. scVI needs raw counts. Using adata.X instead."
-        )
+        logger.warning(f"Layer '{scviva_layer}' not found. Using .X.")
         scviva_layer = None
 
-    # --- UPDATED PCA COMPUTATION ---
+    # --- MEMORY SAFE PCA COMPUTATION ---
     if run_pca or (umap_latent == "X_pca"):
         logger.info("Computing PCA...")
-
-        # 1. Find HVGs using the raw integer counts layer
         sc.pp.highly_variable_genes(
             adata, layer="counts", flavor="seurat_v3", n_top_genes=2000
         )
 
-        # 2. Subset the adata (which currently has the log-normalized .X from QC) to just HVGs
+        # Work on a temporary subset to avoid corrupting the main object
         adata_hvg = adata[:, adata.var["highly_variable"]].copy()
-
-        # 3. Scale the log-normalized HVGs (This Centers the data for PCA)
         sc.pp.scale(adata_hvg, max_value=10)
 
-        # 4. Default to 50 if user didn't specify to calculate the curve
         compute_pcs = n_comps if n_comps else 50
         sc.tl.pca(adata_hvg, n_comps=compute_pcs)
 
         if not n_comps:
-            logger.info(
-                "No 'n_comps' specified. Running heuristic elbow detection to find optimal PCs..."
-            )
+            logger.info("Running heuristic elbow detection...")
             var_ratio = adata_hvg.uns["pca"]["variance_ratio"]
             n_points = len(var_ratio)
-
             p1 = np.array([0, var_ratio[0]])
             p2 = np.array([n_points - 1, var_ratio[-1]])
-
             max_dist = -1
-            optimal_pc = 10  # Safe fallback
+            optimal_pc = 10
 
             for i in range(n_points):
                 p3 = np.array([i, var_ratio[i]])
@@ -660,9 +645,7 @@ def run_dimension_reduction(
                     max_dist = dist
                     optimal_pc = i + 1
 
-            logger.info(
-                f"==> Optimal number of Principal Components determined: {optimal_pc}"
-            )
+            logger.info(f"==> Optimal PCs: {optimal_pc}")
             adata.obsm["X_pca"] = adata_hvg.obsm["X_pca"][:, :optimal_pc].copy()
         else:
             adata.obsm["X_pca"] = adata_hvg.obsm["X_pca"].copy()
@@ -672,6 +655,10 @@ def run_dimension_reduction(
         )
         logger.info(f"PCA Variance plot saved to {sc.settings.figdir}")
 
+        # Clean up dense memory spike instantly
+        del adata_hvg
+        gc.collect()
+
     # --- CONDITIONAL SCVIVA BYPASS ---
     adata_path = module_dir / input_adata_path.name
 
@@ -679,6 +666,7 @@ def run_dimension_reduction(
         if not adata_path.exists():
             adata = run_SCVIVA(
                 adata=adata,
+                module_dir=module_dir,
                 scviva_batch_key=scviva_batch_key,
                 scviva_sample_key=scviva_sample_key,
                 spatial_key=spatial_key,
@@ -691,6 +679,7 @@ def run_dimension_reduction(
                 ref_batch_key=reference_batch_key,
                 ref_label_key=reference_label_key,
                 ref_layer=reference_layer,
+                reference_covariates=reference_covariates,
                 scvi_epochs=scvi_epochs,
                 scanvi_epochs=scanvi_epochs,
                 scviva_batch_size=scviva_batch_size,

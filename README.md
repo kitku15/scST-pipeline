@@ -13,9 +13,74 @@ More visual indepth explanation of the pipeline presented [here](https://docs.go
 - Cell-Cell Communication (CCC) & Causal Networks - Broad microenvironment CCC via [CellphoneDB](https://cellphonedb.readthedocs.io/en/latest), continuous spatial CCC via LIANA+, and downstream causal signaling cascade inference via Corneto.
 - Prepares and packages all results (Zarr, JSON) into a `.tar` archive for local exploration using the [Spatial-VisKit](https://github.com/kitku15/Spatial-VisKit) React web application.
 - Run pipeline reproducibly on HPC clusters (or locally) using Apptainer/Singularity containers, controlled via TOML configuration files.
+- Uses Snakemake to run independent modules in parallel, making efficient use of HPC resources and automatically resuming from where a failed run stopped.
+- Start from raw machine outputs, or use your own pre-processed .h5ad file.
 
 ## ⭐ Pipeline Structure
-The workflow is divided into two main execution phases to allow slide-specific quality control before integration:
+The workflow is divided into two phases:
+
+```mermaid
+graph TD
+    %% Styling
+    classDef array fill:#f9d0c4,stroke:#333,stroke-width:2px;
+    classDef linear fill:#d4e157,stroke:#333,stroke-width:2px;
+    classDef parallel fill:#81d4fa,stroke:#333,stroke-width:2px;
+    classDef depend fill:#ce93d8,stroke:#333,stroke-width:2px;
+    classDef sink fill:#ffcc80,stroke:#333,stroke-width:2px;
+
+    subgraph "Phase 1: PBS Job Array (01_run_qc.sh)"
+        M0[0_FormatData<br/>Raw -> Zarr]:::array
+        M1[1_QualityControl<br/>Slide Level QC]:::array
+        M0 --> M1
+    end
+
+    subgraph "Phase 2: Snakemake Orchestration (02_run_downstream.sh)"
+        M1b[1b_MergeData<br/>Combine Slides]:::linear
+        M2[2_DimensionReduction<br/>UMAP/scVIVA]:::linear
+        M3[3_Annotate<br/>Cell Typing]:::linear
+        
+        M1 -.-> M1b
+        M1b --> M2
+        M2 --> M3
+        
+        %% The Parallel Fan-out
+        M4[4_ViewImages]:::parallel
+        M5[5_SpatialStat]:::parallel
+        M6[6_MuSpan]:::parallel
+        M7[7_Decoupler<br/>TF & Pseudobulk]:::parallel
+        
+        M3 --> M4
+        M3 --> M5
+        M3 --> M6
+        M3 --> M7
+        
+        %% Downstream Blockers
+        M8[8_Cellphonedb]:::depend
+        M8b[8b_LIANA]:::depend
+        M8c[8c_LIANA_Causal]:::depend
+        M9[9_DEAnalysis]:::depend
+        
+        M3 --> M8
+        M3 --> M8b
+        M3 --> M8c
+        
+        M7 --> M8
+        M7 --> M8b
+        M7 --> M8c
+        M7 --> M9
+        
+        %% Terminal Sink
+        M10[10_WebVisPrep<br/>Pack Zarr & JSONs]:::sink
+        
+        M4 --> M10
+        M5 --> M10
+        M6 --> M10
+        M8 --> M10
+        M8b --> M10
+        M8c --> M10
+        M9 --> M10
+    end
+```
 
 ### 1️⃣ Data Formating and Quality Control 
 Modules:
@@ -45,47 +110,131 @@ Additional:
 - One config file
 - slide/batch correction handled by scVI and scVIVA
 
+
 ## Configuration Files
-The pipeline is driven by `.toml` files. You need two main types of configurations:
+The pipeline uses `.toml` files. You need two of these: one for **Data Formatting & Quality Control (Module 0 & 1)**, and one for downstream analysis.
 
 ### Config File 1: Data Formatting and Quality Control
-File name: `config_myanalysis{slide_no}.toml`. Each slide/ batch needs to have one of these as you want to be able to adjust QC thresholds according to each slide. Example:
+You only need **one config file** for an entire batch of slides/samples. If you need different QC thresholds for specific slides, separate them into different folders and create a config file for each folder.
 
-Filename: `config_tyler1.toml`
+<details>
+<summary>Adding Metadata</summary>
+You can have one master metadata CSV for your entire project (ideal for Xenium). You can also have one metadata CSV for each slide (ideal for CosMx). You control how this file merges with your spatial data using two parameters in your config:
+
+- `fov_metadata_path`: The absolute or relative path to your metadata CSV. *(You can use the `{slide_name}` placeholder in the path so the pipeline automatically grabs the correct file for each slide!)*
+- `metadata_join_col`: The column name that exists in both your CSV and your data, which the pipeline will use to link them together.
+</details>
+
+<details>
+<summary>Example 1: CosMx</summary>
+
+For CosMx, each slide is its own folder containing the raw CSV files and its specific metadata CSV. 
+```text
+data/
+└── raw_cosmx/
+    ├── Slide_1/
+    │   ├── *exprMat_file.csv
+    │   ├── Slide_1_metadata.csv
+    ├── Slide_2/
+    │   ├── *exprMat_file.csv
+    │   ├── Slide_2_metadata.csv
+```
+
+
 ```toml
 log_level = "INFO"
-seed = 21122023
+seed = 42
 
 [project]
-analysis_name = "tyler_project" # analysis/output folder
-slide_name = "Slide_1" # or Slide_2, 3, 4 
-data_type = "CosMx" # or Xenium
+analysis_name = "CosMx_Project" 
+data_type = "CosMx" 
+batch_key = "Slide_ID"  
+sample_key = "Sample_ID" 
 
 [io]
-base_dir = "."
-dataset_id = "TylerWooldridgeSlide1" # only used for CosMx dataset 
-dataset_dir = "data/tyler_1" # store your dataset folder inside the data dir
-zarr_dir = "data/tyler_1.zarr" # keep this the same name as your dataset name
+# Point to the parent directory containing all your slide folders
+base_raw_dir = "data/raw_cosmx" 
+base_zarr_dir = "data/zarr_outputs"
 
-[pipeline] # dont change anything here 
+[pipeline] 
 modules = ["0_format", "1_QualityControl"]
 
 [modules.QualityControl]
-min_counts = 50 # threshold- minimum gene count for a cell 
-min_cells = 5 # threshold- minimum cell count for a gene
-min_dapi = 100 # threshold- minimum DAPI for a cell
-fov_metadata_path = "data/tyler_1/TylerWooldridgeSlide1_fov_cohort.csv" # metadata that contains columns to add to adata.obs (will need to make this customizable but currently expects these columns: DiseaseType, TreatmentResponse, sample_id) If None, no additional metadata collumns will be added. 
+# --- QC Thresholds ---
+min_counts = 50    # Minimum total transcripts for a cell 
+min_cells = 5      # Minimum number of cells a gene must be expressed in
+min_dapi = 100     # Minimum DAPI signal for a cell
+min_area = 500     # Minimum cell area
+max_area = 15000   # Maximum cell area
 
+# --- Metadata Integration ---
+# Use the {slide_name} placeholder so the pipeline automatically finds the right CSV for each slide folder!
+fov_metadata_path = "data/raw_cosmx/{slide_name}/{slide_name}_metadata.csv"
+# For CosMx, we typically join clinical data based on the FOV number
+metadata_join_col = "fov" 
+```
+</details>
+
+<details>
+<summary>Example 2: Xenium Workflow</summary>
+Xenium datasets are often grouped by "Runs", with individual sample regions nested inside as `output-XETG...` folders. The pipeline looks inside these Run folders to find your samples. 
+```text
+data/
+└── raw_xenium/
+    ├── RUN_1/
+    │   ├── output-XETG00431_0021045_COPD_R010/
+    │   ├── output-XETG00431_0021045_IPF_RBH_2/
+    ├── RUN_2/
+    │   ├── output-XETG...
 ```
 
+
+```toml
+log_level = "INFO"
+seed = 42
+
+[project]
+analysis_name = "Xenium_Project" 
+data_type = "Xenium" 
+batch_key = "batch"  
+sample_key = "slide_id" # This becomes the column storing the folder names
+
+[io]
+# Point to the parent directory containing your RUN folders
+base_raw_dir = "data/raw_xenium" 
+base_zarr_dir = "data/zarr_outputs"
+
+[pipeline] 
+modules = ["0_format", "1_QualityControl"]
+
+[modules.QualityControl]
+# --- QC Thresholds ---
+min_counts = 10    # Minimum total transcripts for a cell 
+min_genes = 5      # Minimum unique genes for a cell
+min_cells = 5      # Minimum number of cells a gene must be expressed in
+min_area = 10      # Minimum cell area
+max_area = 500     # Maximum cell area
+
+# --- Metadata Integration ---
+# Point this to your master CSV
+fov_metadata_path = "/rds/general/user/bth22/ephemeral/Xenium_Project/metadata.csv"
+# For Xenium, join on the column that holds your folder names (e.g., 'output-XETG...')
+metadata_join_col = "slide_id" 
+```
+</details>
+
 ### Config File 2: Downstream Analysis
-File name: `config_downstream.toml`. Only one configuration file for your merged dataset (merged all slides).
+Only One configuration file for your merged dataset (merged all slides).
+
+<details>
+<summary>Example: config file 2 (`config_downstream.toml`) </summary>
+
 ```toml
 log_level = "INFO"
 seed = 21122023
 
 [project]
-analysis_name = "tyler_project" # THIS MUST BE THE SAME AS WHAT YOU SET IN 01 CONFIG
+analysis_name = "my_CosMx" # THIS MUST BE THE SAME AS WHAT YOU SET IN 01 CONFIG
 data_type = "CosMx" # or Xenium
 batch_key = "slide_id" 
 sample_key = "sample_id"
@@ -199,6 +348,19 @@ microenv_col = "spatial_microenvironment"
 annotation_columns = ["leiden", "Final_Annotation", "Broad_Celltype"]
 
 ```
+</details>
+
+<details>
+<summary>Example: Using your own preprocessed .h5ad file and skip other modules</summary>
+```toml
+[io]
+base_dir = "."
+entry_point = "8b" # E.g., Start directly at LIANA+ CCC
+custom_input_adata = "data/my_preprocessed_dataset.h5ad"
+```
+</details>
+
+
 ## ⭐ Inputs
 These dataset folders need to be in the data directory
 ### 🔘 Xenium 10X
@@ -264,7 +426,7 @@ MyCosMxDataset_2/
 Adjust settings in your job script (`01_run_qc.sh`), and set parameters in your config file. The script leverages PBS arrays to process multiple slides in parallel.
 ```bash
 # Inside 01_run_qc.sh
-CONFIG_NAME="config_tyler${PBS_ARRAY_INDEX}.toml" # path to your 1st config files
+CONFIG_NAME="config_qc.toml" # path to config file 1
 SIF_IMAGE="$(readlink -f kitku.sif)" # singularity image
 
 apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
@@ -285,16 +447,27 @@ Once the QC jobs finish, configure `config_downstream.toml` and submit the downs
 CONFIG_NAME="config_downstream.toml" # path to your 2nd config file
 SIF_IMAGE="$(readlink -f kitku.sif)" # singularity image
 
-# You can pass multiple modules separated by space:
-apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
+# Get the number of CPUs allocated by PBS
+NCPUS=$(cat $PBS_NODEFILE | wc -l 2>/dev/null || echo 32)
+
+apptainer exec --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" --modules 1b 2 3 4 5 6 7 8 8b 8c 9 10
+  python Modules/run_pipeline.py "$CONFIG_NAME" --cores $NCPUS
 ```
 Then to queue the job, run on the command line:
 ```bash
 qsub 02_run_downstream.sh
 ```
+## 🛠️ Pipeline Orchestration & Modifying Parameters
+
+- **Config mistake**: If the pipeline crashes on because of a typo in your config, fix the typo in the .toml and run `qsub 02_run_downstream.sh` again. The pipeline will skip them finished modules and resume exactly where it left off.
+- **Running a subset of modules**: Change the modules = [...] list in the TOML to only include modules you want to run.
+- **Recalculating with new parameters**: If you change a parameter (e.g., Leiden resolution) and want to rerun from that step onwards, delete or rename the output folder (e.g., rm -rf analysis_myproject/2_DimensionReduction). When you run the pipeline, Snakemake will see the folder is missing, rerun Module 2, and automatically cascade the updates to all downstream modules.
+
+
+
+
 ## ⭐ Outputs
 The pipeline generates a highly organized output directory. Module 10 packages the necessary files into a `.tar` archive optimized for the [Spatial-VisKit](https://github.com/kitku15/Spatial-VisKit) Web App.
 ```text
@@ -313,8 +486,7 @@ The pipeline generates a highly organized output directory. Module 10 packages t
 ├── 8b_LIANA/                # Bivariate spatial CCC & NMF components
 ├── 8c_LIANA_Causal/         # Corneto causal networks & pathway CSVs
 ├── 9_DEAnalysis/            # PyDESeq2 condition-specific DE outputs
-├── 10_WebVisPrep/           # Web-optimized JSONs, Vitessce Zarrs, and Sankeys
-│
+├── 10_WebVis/               # Web-optimized JSONs, Vitessce Zarrs, and Sankeys
 └── logs/                    # Comprehensive logs and runtime trackers (.csv)
 ```
 

@@ -10,6 +10,11 @@ sample_key = "sample_id"
 [io]
 base_dir = "."
 
+[io.raw_data]
+"Cos1380R387RRNA6K4u2716" = { dataset_dir = "data/set1/Cos1380R387RRNA6K4u2716", zarr_dir = "data/set1_zarrs/Cos1380R387RRNA6K4u2716.zarr"}
+"Cos1400R355RRNA6K4u1716" = { dataset_dir = "data/set1/Cos1400R355RRNA6K4u1716", zarr_dir = "data/set1_zarrs/Cos1400R355RRNA6K4u1716.zarr"}
+
+
 [pipeline]
 modules = [
     "1_QualityControl",
@@ -37,7 +42,7 @@ run_pca = true
 n_comps = 50     
 umap_latent = "X_pca"
 n_neighbors = [15, 30]                    
-resolution = [0.5, 1.0]                
+resolution = [1.0]                
 cluster_name = "leidenpca"
 
 # Keep these in case you turn scVIVA back on later
@@ -47,27 +52,34 @@ scviva_epochs = 400
 scvi_epochs = 400
 
 [modules.Annotate]
-chosen_cluster = "leidenpca_n30_r0.5" # Just an example, update based on output of Module 2
-ScType_anno = false
+chosen_cluster = "all" # Just an example, update based on output of Module 2
 CellTypist_anno = false
-CellTypist_mode = "one"
 CellTypist_train = false
+ScType_anno = false
+
+# Optional DE settings
+[modules.Annotate.DE_params]
+pval_adj = 0.05
+logfoldchange = 1.0                # Stricter LFC
+min_expr_frac = 0.20               # Relaxed expression fraction
+specificity_margin = 0.15          # Stricter specificity
+# junk_prefixes = ["MT-", "RPS", "RPL", "MALAT1", "XIST"] # Added XIST to junk genes
 
 [modules.ViewImages]
-chosen_cluster = "Final_Annotation"
+chosen_cluster = "leidenpca_n15_r1.0"
 gene_list = ["PIGR", "KRT8", "IGKC", "HLA-DRA", "LYZ", "IGHA1"]
-embedding_key = "X_umap_n30_X_scANVI"
-umap_color_columns = ["slide_id", "sample_id", "TreatmentResponse", "DiseaseType", "Final_Annotation"]
+embedding_key = "X_umap_n15_X_pca"
+umap_color_columns = ["DiseaseType", "Inflammation"]
 
 [modules.SpatialStat]
-chosen_cluster = "Final_Annotation"
-condition_key = "TreatmentResponse"  # column in adata.obs with your conditions
-reference_condition = "Healthy"  # The baseline condition to subtract from others
+chosen_cluster = "leidenpca_n15_r1.0"
+condition_key = "Inflammation"  # column in adata.obs with your conditions
+reference_condition = "no"  # The baseline condition to subtract from others
 
 [modules.MuSpan]
-condition_key = "TreatmentResponse"
-reference_condition = "Healthy"
-chosen_cluster = "Final_Annotation"
+condition_key = "Inflammation"
+reference_condition = "no"
+chosen_cluster = "leidenpca_n15_r1.0"
 transcripts = ["HLA-DRB", "KRT8", "TMSB4X", "TFF3", "IGHA1"]
 min_edge_distance = 0
 max_edge_distance = 10
@@ -76,84 +88,57 @@ min_edge_distance_shape = 0
 max_edge_distance_shape = 1
 k_list = [2, 5, 10, 15]
 
-selection_names = ["Whole_Sample"]
-# selection_names = ["myeloid_ulcer", "submucosal_remodelling"]
-# selection_names = ["stromal_core", "tertiary_lymphoid"]
-
-cell_types = ["Macrophage", "DN/gdT cell"]
+selection_names = ["example"]
+cell_types = ["1", "2"]
 
 cellboundary_label = 'Cell boundaries' 
 max_distance = 2
-network_celltypes = ["Macrophage", "Monocyte", "Plasma cell", "B cell", "CD8 T cell", "CD4 T cell",  "DN/gdT cell", "NK cell", "Neutrophil", "Mast Cell", "Dendritic Cell"]
+network_celltypes = ["0", "1", "2", "3", "4"]
 
 [modules.MuSpan.selected_fovs]
 
-"Slide_1_CPIc_1" = ["2"]
-"Slide_1_Healthy_1" = ["9"]
-"Slide_1_IFX_NR_1" = ["17"]
-"Slide_1_IFX_NR_2" = ["21"]
-"Slide_1_IFX_R_1" = ["12"]
-"Slide_1_IFX_R_2" = ["28"]
-
-"Slide_2_CPIc_1" = ["2"]
-"Slide_2_Healthy_1" = ["11"]
-"Slide_2_IFX_NR_1" = ["28"]
-"Slide_2_IFX_NR_2" = ["59", "60"]
-"Slide_2_IFX_R_1" = ["48"]
-"Slide_2_IFX_R_2" = ["55", "53"]
-
-"Slide_3_CPIc_1" = ["8"]
-"Slide_3_Healthy_1" = ["2", "3"]
-"Slide_3_IFX_NR_1" = ["33"]
-"Slide_3_IFX_NR_2" = ["69"]
-"Slide_3_IFX_R_1" = ["24", "25"]
-"Slide_3_IFX_R_2" = ["66", "67"]
-
-"Slide_4_CPIc_1" = ["9"]
-"Slide_4_Healthy_1" = ["6"]
-"Slide_4_IFX_NR_1" = ["15"]
-"Slide_4_IFX_NR_2" = ["38"]
-"Slide_4_IFX_R_1" = ["22"]
-"Slide_4_IFX_R_2" = ["31"]
-
+"Cos1380R387RRNA6K4u2716_380R" = ["36","37", "38","39"]
+"Cos1380R387RRNA6K4u2716_387R" = ["6", "7", "10", "11"]
+"Cos1400R355RRNA6K4u1716_355R" = ["10", "11", "12", "13"]
+"Cos1400R355RRNA6K4u1716_400R" = ["48", "49", "52", "53"]
 
 [modules.Decoupler]
-celltype_key = "Final_Annotation"
+celltype_key = "leidenpca_n15_r1.0"
 organism = "human"
 grn = "dorothea"
 dorothea_levels = ["A", "B"]
 
 [modules.Cellphonedb]
 microenv_resolution = 0.5
-chosen_cluster = "Final_Annotation"
+chosen_cluster = "leidenpca_n15_r1.0"
 cpdb_version = 'v5.0.0'
 human = true
 
-target_sample = "Slide_1_CPIc_1" 
+target_sample = "Cos1380R387RRNA6K4u2716_380R" 
 
 use_cellsign = false
-celltypes = ["CD8 T cell", "CD4 T cell", "Macrophage"]
-target_genes = [
-    "IL6",      
-    "CXCR3",     
-    "CXCL9",      
-    "CXCL10",    
-    "CCL5",      
-    "IL1B",      
-    "IFNG",     
-    "IL22",      
-]
+celltypes = ["4", "5", "6"]
+# target_genes = [
+#     "IL6",      
+#     "CXCR3",     
+#     "CXCL9",      
+#     "CXCL10",    
+#     "CCL5",      
+#     "IL1B",      
+#     "IFNG",     
+#     "IL22",      
+# ]
 
 [modules.LIANA]
-bandwidth = 15
+bandwidth = 200
 cutoff = 0.1
 nz_prop = 0.05
 n_nmf_components = 3
 resource_name = 'consensus'
 
 [modules.LIANA_Causal]
-celltype_col = "Final_Annotation"
-treatment_col = "TreatmentResponse"
+celltype_col = "leidenpca_n15_r1.0"
+treatment_col = "Inflammation"
 sample_key = "sample_id"
 organism = "human"
 solver = "HIGHS"      # 'CLARABEL', 'SCS', 'SCIP', 'SCIPY', 'HIGHS', 'OSQP'
@@ -167,35 +152,27 @@ stable_runs = 10
 
 # Multiple Comparisons [Stim, Control]
 comparisons = [
-    ["CPIc", "Healthy"],
-    ["IFX_NR", "IFX_R"],
-    ["IFX_NR", "Healthy"],
-    ["CPIc", "IFX_NR"], 
+    ["yes", "no"],
 ]
 
 # Multiple Cell Type Pairs [Source (Sender), Target (Receiver)]
 cell_type_pairs = [
-    ["Macrophage", "CD8 T cell"],
-    ["Macrophages/Monocytes", "B Cells"],
-    ["T Cells", "Stem/Progenitor Epithelial"],
-    ["B Cells", "T Cells"],
+    ["1", "2"],
+    ["2", "1"],
 ]
 
 [modules.DEAnalysis]
 DEAnalysis = true
-celltype_col = "Final_Annotation"
-treatment_col = "TreatmentResponse"
+celltype_col = "leidenpca_n15_r1.0"
+treatment_col = "Inflammation"
 comparisons = [
-    ["IFX_NR", "IFX_R"],     
-    ["CPIc", "Healthy"],      
-    ["IFX_NR", "Healthy"],    
-    ["CPIc", "IFX_NR"]  
+    ["yes", "no"],
 ]
 
+
 [modules.WebVisPrep]
-# standard_meta = ["fov", "DiseaseType", "TreatmentResponse"]
-annotation_columns = ["leiden", "Final_Annotation", "Broad_Lineage", "Broad_Celltype", "Coarse_Celltype"]
+annotation_columns = ["leiden", "leidenpca_n15_r1.0"]
 
 # Explicitly define the target columns for the web UI here, instead of borrowing them
-primary_annotation = "Final_Annotation"
+primary_annotation = "leidenpca_n15_r1.0"
 microenv_col = "spatial_microenvironment"

@@ -23,3 +23,4 @@ max_area = 15000
 min_dapi = 100
 
 fov_metadata_path = "data/set1/{slide_name}/{slide_name}_fov_cohort.csv"
+metadata_join_col = "fov"

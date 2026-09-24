@@ -17,7 +17,13 @@ logger = getLogger(__name__)
 
 
 def cluster_DE_analysis(
-    adata, cluster_col, module_dir, method=None, celltype_col=None, plot=True, de_params=None
+    adata,
+    cluster_col,
+    module_dir,
+    method=None,
+    celltype_col=None,
+    plot=True,
+    de_params=None,
 ):
     """
     cluster_col: the groupings / clustering column that the DE analysis will be based on
@@ -46,7 +52,9 @@ def cluster_DE_analysis(
     invalid_groups = group_counts[group_counts < 2].index.astype(str).tolist()
 
     if len(valid_groups) == 0:
-        logger.warning(f"No groups with >= 2 cells found for {celltype_col}. Skipping DE analysis.")
+        logger.warning(
+            f"No groups with >= 2 cells found for {celltype_col}. Skipping DE analysis."
+        )
         return
 
     if invalid_groups:
@@ -68,45 +76,57 @@ def cluster_DE_analysis(
     )
 
     # 1. create filtered df
-    markers = sc.get.rank_genes_groups_df(adata, None)
-    
+    markers_full = sc.get.rank_genes_groups_df(adata, None)
+
     if de_params is None:
         de_params = {}
-        
+
     pval_thresh = de_params.get("pval_adj", 0.05)
     lfc_thresh = de_params.get("logfoldchange", 0.5)
     min_expr_frac = de_params.get("min_expr_frac", 0.25)
     spec_margin = de_params.get("specificity_margin", 0.1)
-    
-    # Needs to be a tuple for pandas str.startswith()
-    junk_prefixes = tuple(de_params.get("junk_prefixes", ["MT-", "RPS", "RPL", "MALAT1"]))
 
-    # apply filters
-    markers = markers[
-        (markers["pvals_adj"] < pval_thresh) & 
-        (markers["logfoldchanges"] > lfc_thresh) & 
-        (markers["pct_nz_group"] > min_expr_frac) & 
-        ((markers["pct_nz_group"] - markers["pct_nz_reference"]) > spec_margin) & 
-        (~markers["names"].str.upper().str.startswith(junk_prefixes))
+    junk_prefixes = tuple(
+        de_params.get("junk_prefixes", ["MT-", "RPS", "RPL", "MALAT1"])
+    )
+
+    # Remove junk genes
+    markers_full = markers_full[
+        ~markers_full["names"].str.upper().str.startswith(junk_prefixes)
     ]
 
-    # Create dictionaries of the top filtered genes for plotting and File 2
+    # Create the strict dataset for plots and summary files
+    markers_strict = markers_full[
+        (markers_full["pvals_adj"] < pval_thresh)
+        & (markers_full["logfoldchanges"] > lfc_thresh)
+        & (markers_full["pct_nz_group"] > min_expr_frac)
+        & (
+            (markers_full["pct_nz_group"] - markers_full["pct_nz_reference"])
+            > spec_margin
+        )
+    ]
+
+    # Create dictionaries of the top strict filtered genes for plotting and File 2
     top_genes_dict_5 = {}  # For the dotplot (Top 5)
-    top_genes_dict_10 = {} # For File 2 summary (Top 10)
-    
+    top_genes_dict_10 = {}  # For File 2 summary (Top 10)
+
     for group in valid_groups:
         # Get genes for this specific cluster and sort by logfoldchange
-        grp_df = markers[markers["group"] == str(group)].sort_values(by="logfoldchanges", ascending=False)
+        grp_df = markers_strict[markers_strict["group"] == str(group)].sort_values(
+            by="logfoldchanges", ascending=False
+        )
         top_genes_dict_5[str(group)] = grp_df["names"].head(5).tolist()
         top_genes_dict_10[str(group)] = grp_df["names"].head(10).tolist()
 
     # plotting
     if plot:
-        logger.info("Plotting the top differentially expressed genes for each cluster...")
-        
+        logger.info(
+            "Plotting the top differentially expressed genes for each cluster..."
+        )
+
         # Remove groups that ended up with 0 markers after filtering (prevents Scanpy crash)
         valid_plot_dict = {k: v for k, v in top_genes_dict_5.items() if len(v) > 0}
-        
+
         if valid_plot_dict:
             # Standard dotplot passing our strictly filtered dictionary
             sc.pl.dotplot(
@@ -119,13 +139,15 @@ def cluster_DE_analysis(
             )
             logger.info(f"Dotplot saved to {sc.settings.figdir}")
         else:
-            logger.warning("No genes passed the strict filters for any cluster. Skipping plots.")
+            logger.warning(
+                "No genes passed the strict filters for any cluster. Skipping plots."
+            )
 
     # save
     logger.info("Save files for differentially expressed genes for each cluster...")
-    
-    logger.info("File 1 (All filtered markers)...")
-    markers.to_excel(
+
+    logger.info("File 1 (Strict filtered markers)...")
+    markers_strict.to_excel(
         output_dir / f"markers_{celltype_col}.xlsx",
         index=False,
     )
@@ -146,16 +168,17 @@ def cluster_DE_analysis(
         )
         logger.info(f"Top differentially expressed genes saved to {module_dir}")
 
-    logger.info("File 3 (Individual cluster files)...")
+    logger.info("File 3 (Individual cluster files FOR WEB TOOL)...")
     cluster_path = output_dir / "DEgenes"
     cluster_path.mkdir(exist_ok=True)
-    
+
     for group_name in valid_groups:
-        current_cluster = markers[markers["group"] == str(group_name)].sort_values(
-            by="logfoldchanges", ascending=False
-        )
-        
-        # Clean the name for the filename
+        current_cluster = markers_full[
+            markers_full["group"] == str(group_name)
+        ].sort_values(by="logfoldchanges", ascending=False)
+
+        # To prevent massive JSON files in the browser, cap it at the top 1000 genes
+        current_cluster = current_cluster.head(1000)
         safe_name = re.sub(r"[^\w\s-]", "", str(group_name)).replace(" ", "_")
         csv_filename = cluster_path / f"cluster_{safe_name}_data.csv"
 
@@ -186,7 +209,9 @@ def cluster_DE_analysis(
 def mode_all(adata):
     umap_keys = [k for k in adata.obsm.keys() if "X_umap_n" in k]
 
-    leiden_keys = [k for k in adata.obs.columns if k.startswith("leiden")] # all clustering 
+    leiden_keys = [
+        k for k in adata.obs.columns if k.startswith("leiden")
+    ]  # all clustering
 
     cluster_cols = []
 
@@ -419,15 +444,18 @@ def run_annotate(
 
     # If using scANVI (or pre-computed labels) and skipping ScType/CellTypist
     if not ScType_anno and not CellTypist_anno:
-        
         # ADDED LOGIC: Check if user wants to run DE on ALL clustering columns
         if cluster_name.lower() == "all":
-            logger.info("Using pre-computed labels. Running plotting and DE analysis for ALL clusters.")
+            logger.info(
+                "Using pre-computed labels. Running plotting and DE analysis for ALL clusters."
+            )
             cluster_cols = mode_all(adata)
-            
+
             for umap_col, cluster_col in cluster_cols:
-                clean_umap = umap_col.removeprefix("X_") # Remove 'X_' prefix for scanpy plotting
-                
+                clean_umap = umap_col.removeprefix(
+                    "X_"
+                )  # Remove 'X_' prefix for scanpy plotting
+
                 if plot:
                     run_CellType_plotting(
                         method="PreAnnotated",
@@ -450,14 +478,18 @@ def run_annotate(
                     plot=plot,
                     de_params=de_params,
                 )
-                
+
         # Running for just one specific cluster
         else:
-            logger.info(f"Using pre-computed labels from '{cluster_name}' (e.g., scANVI).")
+            logger.info(
+                f"Using pre-computed labels from '{cluster_name}' (e.g., scANVI)."
+            )
 
             # Assuming UMAP was generated in DimReduc as X_umap_n20, find the first available UMAP
             umap_col = next((k for k in adata.obsm.keys() if "X_umap" in k), "X_umap")
-            umap_col = umap_col.removeprefix("X_")  # Remove 'X_' prefix for scanpy plotting
+            umap_col = umap_col.removeprefix(
+                "X_"
+            )  # Remove 'X_' prefix for scanpy plotting
 
             if plot:
                 run_CellType_plotting(

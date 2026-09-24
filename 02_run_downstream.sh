@@ -1,6 +1,6 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=32:mem=512gb
-#PBS -l walltime=48:00:00
+#PBS -l select=1:ncpus=16:mem=32gb
+#PBS -l walltime=02:00:00
 #PBS -N run_ds
 #PBS -j oe
 
@@ -36,7 +36,7 @@ cleanup_apptainer_tmp() {
 trap cleanup_apptainer_tmp EXIT
 
 # USE THE MASTER DOWNSTREAM CONFIG
-CONFIG_NAME="config_tyler_downstream_manual.toml"
+CONFIG_NAME="configs/config_pCosMx_ds.toml"
 SIF_IMAGE="$(readlink -f kitku.sif)"
 
 [[ -f "$SIF_IMAGE" ]] || { echo "Missing SIF image: $SIF_IMAGE" >&2; exit 1; }
@@ -44,8 +44,10 @@ SIF_IMAGE="$(readlink -f kitku.sif)"
 
 echo "Running Downstream Spatial Pipeline: Merge -> Analysis" >&2
 
-apptainer run --writable-tmpfs -W "$APPTAINER_WORKDIR" \
+# Get the number of CPUs allocated by PBS (or default to 32)
+NCPUS=$(cat $PBS_NODEFILE | wc -l 2>/dev/null || echo 32)
+
+apptainer exec --writable-tmpfs -W "$APPTAINER_WORKDIR" \
   --bind "$PBS_O_WORKDIR:/app" \
   "$SIF_IMAGE" \
-  "$CONFIG_NAME" --modules 1b 2 3 4 5 6 7 8 8b 8c 9 10
-echo "Pipeline finished!" >&2 
+  python Modules/run_pipeline.py "$CONFIG_NAME" --cores $NCPUS

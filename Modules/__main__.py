@@ -32,38 +32,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def get_input_file(prev_dir):
-    """Finds the main adata .h5ad file from the previous module."""
-    prev_path = Path(prev_dir)
-
-    # 1. Check direct path
-    file_path = prev_path / "adata.h5ad"
-    if file_path.exists():
-        return file_path
-
-    # 2. Check subdirectories
-    sub_files = list(prev_path.glob("*/adata.h5ad"))
-
-    if len(sub_files) == 1:
-        return sub_files[0]
-
-    elif len(sub_files) > 1:
-        raise FileNotFoundError(
-            f"Found multiple adata.h5ad files in {prev_dir}. "
-            "You have multiple slides but skipped '1b_MergeData'. Please add it to your config!"
-        )
-
-    logger.warning(f"No adata.h5ad file found in {prev_dir}!")
-    return file_path
-
-
 if __name__ == "__main__":
     args = parse_args()
     os.environ["RECODE_CONFIG"] = args.config_file
 
     from Annotate import run_annotate
     from CellPhonedb import plot_cellphonedb, run_cellphonedb
-    from config import analysis_dir, get_module, settings
+    from config import analysis_dir, get_module, settings, generate_run_id
     from DE_Analysis import targeted_pairwise_DE
     from Decoupler import tf_enrichment
     from DimensionReduction import run_dimension_reduction
@@ -84,6 +59,20 @@ if __name__ == "__main__":
     from SpatialStat import run_spatial_statistics
     from ViewImages import run_view_images
     from WebVisPrep import run_web_backend_prep
+    from path_resolver import PathResolver
+    import json
+
+    def create_hashed_outdir(base_dir: Path, settings_dict: dict) -> Path:
+        """Generates the hash directory and dumps the parameters.json manifest."""
+        run_id = generate_run_id(settings_dict)
+        hashed_dir = base_dir / run_id
+        hashed_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save the manifest so users can read it
+        with open(hashed_dir / "parameters.json", "w") as f:
+            json.dump(settings_dict, f, indent=4, default=str)
+
+        return hashed_dir
 
     # Setup Logging
     log_dir = analysis_dir / "logs"
@@ -97,6 +86,7 @@ if __name__ == "__main__":
 
     logger.info("Seeding everything...")
     seed_everything(settings.get("seed", 42))  # Defaults to 42 if not in config
+    resolver = PathResolver(analysis_dir, settings)
 
     if args.comp_index is not None:
         # Check if the module exists in the config
@@ -118,37 +108,50 @@ if __name__ == "__main__":
     logger.info("Starting recode_st pipeline...")
 
     # Global settings
-    analysis_name = settings["project"].get("analysis_name", "my_analysis")
-    data_type = settings["project"]["data_type"]
+    analysis_name = settings.project.analysis_name
+    data_type = settings.project.data_type
 
     # Determine dataset path and slide name based on batch mode or single-slide mode
     base_raw_dir = settings["io"].get("base_raw_dir", None)
-    
+
     if base_raw_dir and args.sample_index is not None:
         base_dir_path = Path(base_raw_dir)
-        # Get all subdirectories, sorted alphabetically (ignores files like .tar.gz)
-        dataset_folders = sorted([d for d in base_dir_path.iterdir() if d.is_dir()])
-        
+
+        if (
+            data_type == "Xenium"
+        ):  # assuming folder structures for xenium stays the same as it is rn
+            dataset_folders = sorted(
+                [
+                    d
+                    for d in base_dir_path.glob("*/*")
+                    if d.is_dir() and "output-" in d.name
+                ]
+            )
+        else:
+            dataset_folders = sorted([d for d in base_dir_path.iterdir() if d.is_dir()])
+
         # Array index is 1-based, Python lists are 0-based
         idx = args.sample_index - 1
-        
+
         if idx >= len(dataset_folders):
-            logger.info(f"Index {args.sample_index} exceeds available folders. Exiting gracefully.")
+            logger.info(
+                f"Index {args.sample_index} exceeds available folders. Exiting gracefully."
+            )
             sys.exit(0)
-            
+
         selected_slide_dir = dataset_folders[idx]
         slide_name = selected_slide_dir.name
-        
+
         # Override settings for downstream modules
         settings["project"]["slide_name"] = slide_name
         settings["io"]["dataset_id"] = slide_name
         dataset_path = str(selected_slide_dir)
-        
+
         # Dynamically set the zarr path based on the folder name
         base_zarr_dir = settings["io"].get("base_zarr_dir", "data_zarrs")
         Path(base_zarr_dir).mkdir(parents=True, exist_ok=True)
         zarr_path = str(Path(base_zarr_dir) / f"{slide_name}.zarr")
-        
+
         logger.info(f"BATCH MODE: Targeted folder '{slide_name}'.")
     else:
         # Fallback to single-slide logic if base_raw_dir isn't used
@@ -162,6 +165,7 @@ if __name__ == "__main__":
 
     if data_type == "CosMx":
         spatial_key = "global"
+        dataset_id = settings.io.dataset_id
     elif data_type == "Xenium":
         spatial_key = "spatial"
 
@@ -247,37 +251,34 @@ if __name__ == "__main__":
                         module_1_dir = module_1_dir / slide_name
                         module_1_dir.mkdir(parents=True, exist_ok=True)
 
-                    qc_settings = settings["modules"]["QualityControl"]
+                    from config import QCConfig  # Import schema
 
-                    # replace {slide_name} placeholder
-                    fov_path = qc_settings.get("fov_metadata_path", None)
+                    # 1. Grab raw dict
+                    qc_raw = settings["modules"].get("QualityControl", {})
+
+                    # 2. String substitution before validation
+                    fov_path = qc_raw.get("fov_metadata_path", None)
                     if fov_path and "{slide_name}" in fov_path:
-                        fov_path = fov_path.format(slide_name=slide_name)
-                        
-                    proseg_path = qc_settings.get("proseg_zarr_path", None)
+                        qc_raw["fov_metadata_path"] = fov_path.format(
+                            slide_name=slide_name
+                        )
+
+                    proseg_path = qc_raw.get("proseg_zarr_path", None)
                     if proseg_path and "{slide_name}" in proseg_path:
-                        proseg_path = proseg_path.format(slide_name=slide_name)
+                        qc_raw["proseg_zarr_path"] = proseg_path.format(
+                            slide_name=slide_name
+                        )
+
+                    # 3. Validate!
+                    qc_config = QCConfig(**qc_raw)
 
                     run_qc(
                         data_type=data_type,
                         module_dir=module_1_dir,
                         zarr_path=zarr_path,
-                        min_counts=qc_settings["min_counts"],
-                        min_cells=qc_settings["min_cells"],
-                        min_genes=qc_settings["min_genes"],
-                        min_area=qc_settings["min_area"],
-                        max_area=qc_settings["max_area"],
-                        min_dapi=qc_settings.get("min_dapi", None),
                         batch_key=batch_key,
                         sample_key=sample_key,
-                        fov_metadata_path=fov_path,
-                        proseg_zarr_path=proseg_path,
-                        proseg_cell_id_col=qc_settings.get(
-                            "proseg_cell_id_col", "original_cell_id"
-                        ),
-                        original_cell_id_col=qc_settings.get(
-                            "original_cell_id_col", "index"
-                        ),
+                        qc_config=qc_config,  # Passing the Pydantic object!
                     )
 
             # MODULE 1B: Merge Data
@@ -286,30 +287,39 @@ if __name__ == "__main__":
                     logger.info("Running Data Merging...")
                     module_1b_name, module_1b_dir = get_module("1b")
                     _, module_1_dir = get_module(1)
-                    
-                    merge_settings = settings["modules"].get("MergeData", {})
 
-                    # Try to get them from config, otherwise AUTO-DISCOVER them
-                    input_files = merge_settings.get("input_files", [])
-                    slide_names = merge_settings.get("slide_names", [])
+                    from config import MergeConfig
+
+                    merge_raw = settings["modules"].get("MergeData", {})
+
+                    input_files = merge_raw.get("input_files", [])
+                    slide_names = merge_raw.get("slide_names", [])
 
                     if not input_files:
-                        logger.info(f"Auto-discovering QC'd datasets in {module_1_dir}...")
-                        # Find all adata.h5ad files in the subdirectories of Module 1
+                        logger.info(
+                            f"Auto-discovering QC'd datasets in {module_1_dir}..."
+                        )
                         found_files = sorted(list(module_1_dir.glob("*/adata.h5ad")))
-                        
+
                         if not found_files:
-                            raise FileNotFoundError(f"No QC'd adata.h5ad files found in {module_1_dir}. Did Module 1 finish?")
-                            
+                            raise FileNotFoundError(
+                                f"No QC'd adata.h5ad files found in {module_1_dir}. Did Module 1 finish?"
+                            )
+
                         input_files = [str(f) for f in found_files]
-                        # The slide name is the name of the folder containing the adata.h5ad
                         slide_names = [f.parent.name for f in found_files]
-                        
-                        logger.info(f"Found {len(input_files)} datasets to merge: {slide_names}")
+                        logger.info(
+                            f"Found {len(input_files)} datasets to merge: {slide_names}"
+                        )
+
+                    # Validate!
+                    merge_config = MergeConfig(
+                        input_files=input_files, slide_names=slide_names
+                    )
 
                     run_merge(
-                        input_files=input_files,
-                        slide_names=slide_names,
+                        input_files=merge_config.input_files,
+                        slide_names=merge_config.slide_names,
                         module_dir=module_1b_dir,
                     )
 
@@ -327,7 +337,7 @@ if __name__ == "__main__":
                     module_2_name, module_2_dir = get_module(2)
                     dr_settings = settings["modules"]["DimensionReduction"]
 
-                    input_file = get_input_file(prev_dir)
+                    input_file = resolver.get_adata_for_module("2")
                     run_dimension_reduction(
                         data_type=data_type,
                         input_adata_path=input_file,
@@ -357,6 +367,9 @@ if __name__ == "__main__":
                             "reference_label_key", None
                         ),
                         reference_layer=dr_settings.get("reference_layer", "X"),
+                        reference_covariates=dr_settings.get(
+                            "reference_covariates", None
+                        ),
                         scvi_epochs=dr_settings.get("scvi_epochs", 400),
                         scanvi_epochs=dr_settings.get("scanvi_epochs", 200),
                         scviva_batch_size=dr_settings.get("scviva_batch_size", 512),
@@ -374,7 +387,7 @@ if __name__ == "__main__":
                     module_3_name, module_3_dir = get_module(3)
                     anno_settings = settings["modules"]["Annotate"]
 
-                    input_file = get_input_file(module_2_dir)
+                    input_file = resolver.get_adata_for_module("3")
                     run_annotate(
                         datatype=data_type,
                         module_dir=module_3_dir,
@@ -410,12 +423,13 @@ if __name__ == "__main__":
                     module_4_name, module_4_dir = get_module(4)
                     viewimages_set = settings["modules"]["ViewImages"]
 
-                    input_file = get_input_file(module_3_dir)
+                    input_file = resolver.get_adata_for_module("4")
+                    hashed_mod4_dir = create_hashed_outdir(module_4_dir, viewimages_set)
                     grid_csv_path = run_view_images(
                         data_type=data_type,
                         input_adata_path=input_file,
                         sample_key=sample_key,
-                        module_dir=module_4_dir,
+                        module_dir=hashed_mod4_dir,
                         gene_list=viewimages_set["gene_list"],
                         cluster_name=viewimages_set["chosen_cluster"],
                         n_grid_x=viewimages_set.get("n_grid_x", 10),
@@ -440,9 +454,13 @@ if __name__ == "__main__":
                         "reference_condition", None
                     )
 
-                    input_file = get_input_file(module_4_dir)
+                    input_file = resolver.get_adata_for_module("5")
+                    hashed_mod5_dir = create_hashed_outdir(
+                        module_5_dir, spatial_settings
+                    )
+
                     run_spatial_statistics(
-                        module_dir=module_5_dir,
+                        module_dir=hashed_mod5_dir,
                         input_adata_path=input_file,
                         sample_key=sample_key,
                         cluster_name=cluster_name,
@@ -466,7 +484,8 @@ if __name__ == "__main__":
                     # FETCH SELECTED FOVS AS A DICTIONARY
                     selected_fovs_dict = ms_settings.get("selected_fovs", {})
 
-                    input_file = get_input_file(module_5_dir)
+                    input_file = resolver.get_adata_for_module("6")
+                    hashed_mod6_dir = create_hashed_outdir(module_6_dir, ms_settings)
 
                     import scanpy as sc
 
@@ -485,9 +504,9 @@ if __name__ == "__main__":
                     # GET LIST OF SELECTIONS FROM TOML
                     base_selections = ms_settings.get("selection_names", None)
 
-                    # 3. loop throug the Samples
+                    # 3. loop through the Samples
                     for sample in samples_to_run:
-                        sample_out_dir = module_6_dir / sample
+                        sample_out_dir = hashed_mod6_dir / sample
                         sample_out_dir.mkdir(parents=True, exist_ok=True)
 
                         sample_input_file = (
@@ -532,7 +551,9 @@ if __name__ == "__main__":
                             ]["slide_id"].iloc[0]
 
                             # 1. Try to get paths from the TOML [io.raw_data] dictionary
-                            raw_io = settings["io"].get("raw_data", {}).get(slide_id, {})
+                            raw_io = (
+                                settings["io"].get("raw_data", {}).get(slide_id, {})
+                            )
                             dataset_path = raw_io.get("dataset_dir")
                             zarr_path = raw_io.get("zarr_dir")
                             proseg_zarr_path = raw_io.get("proseg_zarr_dir")
@@ -540,13 +561,15 @@ if __name__ == "__main__":
                             # 2. If missing from TOML, build paths dynamically
                             if not dataset_path and "base_raw_dir" in settings["io"]:
                                 base_raw = Path(settings["io"]["base_raw_dir"])
-                                base_zarr = Path(settings["io"].get("base_zarr_dir", "data_zarrs"))
-                                
+                                base_zarr = Path(
+                                    settings["io"].get("base_zarr_dir", "data_zarrs")
+                                )
+
                                 potential_dataset = base_raw / slide_id
                                 if potential_dataset.exists():
                                     dataset_path = str(potential_dataset)
                                     zarr_path = str(base_zarr / f"{slide_id}.zarr")
-                                    
+
                                     # Check for proseg zarr dynamically just in case
                                     maybe_proseg = base_zarr / f"{slide_id}_proseg.zarr"
                                     if maybe_proseg.exists():
@@ -748,12 +771,14 @@ if __name__ == "__main__":
                                 "Module 6: Cross-Condition Aggregation"
                             ):
                                 aggregate_muspan_across_conditions(
-                                    module_6_dir=module_6_dir,
+                                    module_6_dir=hashed_mod6_dir,
                                     sample_condition_dict=sample_to_cond,
                                     reference_condition=reference_condition,
-                                    base_selection_name=base_selections[0]
-                                    if "base_selections" in locals()
-                                    else ms_settings.get("selection_name"),
+                                    base_selection_name=(
+                                        base_selections[0]
+                                        if base_selections
+                                        else ms_settings.get("selection_name")
+                                    ),
                                 )
                         else:
                             logger.info(
@@ -769,7 +794,6 @@ if __name__ == "__main__":
                     logger.info("Running Decoupler TF Enrichment Analysis...")
                     _, module_7_dir = get_module(7)
                     _, module_5_dir = get_module(5)
-                    _, module_10_dir = get_module(10)
                     decoupler_settings = settings["modules"]["Decoupler"]
                     organism = decoupler_settings.get("organism", None)
                     grn = decoupler_settings.get("grn", None)
@@ -779,10 +803,9 @@ if __name__ == "__main__":
                         "active_tfs_file_name", "active_tf.txt"
                     )
 
-                    input_file = get_input_file(module_5_dir)
+                    input_file = resolver.get_adata_for_module("7")
                     tf_enrichment(
                         module_dir=module_7_dir,
-                        web_dir=module_10_dir,
                         input_adata_path=input_file,
                         sample_key=sample_key,
                         celltype_key=celltype_key,
@@ -816,10 +839,11 @@ if __name__ == "__main__":
 
                 with tracker.measure("Module 8: Cellphonedb CCC Analysis"):
                     logger.info("Running Cellphonedb CCC Analysis...")
-                    input_file = get_input_file(module_5_dir)
+                    input_file = resolver.get_adata_for_module("8")
+                    hashed_mod8_dir = create_hashed_outdir(module_8_dir, cpdb_settings)
 
                     cpdb_counts_path = run_cellphonedb(
-                        module_dir=module_8_dir,
+                        module_dir=hashed_mod8_dir,
                         input_adata_path=input_file,
                         sample_key=sample_key,
                         chosen_cluster=chosen_cluster,
@@ -831,7 +855,7 @@ if __name__ == "__main__":
                     logger.info("Plotting Cellphonedb Results...")
 
                     plot_cellphonedb(
-                        module_dir=module_8_dir,
+                        module_dir=hashed_mod8_dir,
                         cpdb_counts_path=cpdb_counts_path,
                         celltype_key=chosen_cluster,
                         celltypes=celltypes,
@@ -854,7 +878,7 @@ if __name__ == "__main__":
 
                 with tracker.measure("Module 8b: LIANA+ Single-Cell CCC"):
                     logger.info("Running LIANA+ Spatial CCC...")
-                    input_file = get_input_file(module_5_dir)
+                    input_file = resolver.get_adata_for_module("8b")
 
                     run_liana_pipeline(
                         module_dir=module_8b_dir,
@@ -877,11 +901,14 @@ if __name__ == "__main__":
                     "Module 8c: LIANA+ Condition CCC & Causal Inference"
                 ):
                     logger.info("Running LIANA+ Condition-Specific Causal Inference...")
-                    input_file = get_input_file(module_5_dir)
+                    input_file = resolver.get_adata_for_module("8c")
                     pseudobulk_file = module_7_dir / "pseudobulk.h5ad"
+                    hashed_mod8c_dir = create_hashed_outdir(
+                        module_8c_dir, liana_causal_settings
+                    )
 
                     run_condition_ccc_pipeline(
-                        module_dir=module_8c_dir,
+                        module_dir=hashed_mod8c_dir,
                         input_adata_path=input_file,
                         pseudobulk_adata_path=pseudobulk_file,
                         settings=liana_causal_settings,
@@ -893,12 +920,16 @@ if __name__ == "__main__":
                 DEAnalysis_settings = settings["modules"]["DEAnalysis"]
 
                 with tracker.measure("Module 9: Pydeseq2 Pseudobulk Analysis"):
+                    hashed_mod9_dir = create_hashed_outdir(
+                        module_9_dir, DEAnalysis_settings
+                    )
+
                     targeted_pairwise_DE(
                         pseudobulk_adata_path=f"{module_7_dir}/pseudobulk.h5ad",
                         celltype_col=DEAnalysis_settings.get("celltype_col", None),
                         treatment_col=DEAnalysis_settings.get("treatment_col", None),
                         comparisons=DEAnalysis_settings.get("comparisons", None),
-                        module_dir=module_9_dir,
+                        module_dir=hashed_mod9_dir,
                     )
 
             # MODULE 10: Exporting Files for Web Tool
@@ -913,21 +944,51 @@ if __name__ == "__main__":
                 _, module_8c_dir = get_module("8c")
                 _, module_9_dir = get_module(9)
                 _, module_10_dir = get_module(10)
-                
+
                 # Fetch the heavily processed pseudobulk/TF AnnData
-                input_file = get_input_file(module_7_dir)
+                input_file = resolver.get_adata_for_module("10")
 
                 DEAnalysis = settings["modules"]["DEAnalysis"].get("DEAnalysis", False)
                 webvissettings = settings["modules"]["WebVisPrep"]
 
-                celltype_key = webvissettings.get("primary_annotation", "Broad_Celltype")
-                microenv_key = webvissettings.get("microenv_col", "spatial_microenvironment")
-                anno_keywords = webvissettings.get("annotation_columns", ["leiden", "CellTypist", "sctype", "cluster"])
+                celltype_key = webvissettings.get(
+                    "primary_annotation", "Broad_Celltype"
+                )
+                microenv_key = webvissettings.get(
+                    "microenv_col", "spatial_microenvironment"
+                )
+                anno_keywords = webvissettings.get(
+                    "annotation_columns", ["leiden", "CellTypist", "sctype", "cluster"]
+                )
 
-                with tracker.measure("Module 10: Exporting Zarr and Aux Data for Web Backend"):
-                    
+                with tracker.measure(
+                    "Module 10: Exporting Zarr and Aux Data for Web Backend"
+                ):
+                    hashed_mod10_dir = create_hashed_outdir(
+                        module_10_dir, webvissettings
+                    )
+
+                    hash5 = module_5_dir / generate_run_id(
+                        settings["modules"].get("SpatialStat", {})
+                    )
+                    hash6 = module_6_dir / generate_run_id(
+                        settings["modules"].get("MuSpan", {})
+                    )
+                    hash8 = module_8_dir / generate_run_id(
+                        settings["modules"].get("Cellphonedb", {})
+                    )
+                    hash8b = module_8b_dir / generate_run_id(
+                        settings["modules"].get("LIANA", {})
+                    )
+                    hash8c = module_8c_dir / generate_run_id(
+                        settings["modules"].get("LIANA_Causal", {})
+                    )
+                    hash9 = module_9_dir / generate_run_id(
+                        settings["modules"].get("DEAnalysis", {})
+                    )
+
                     run_web_backend_prep(
-                        module_dir=module_10_dir,
+                        module_dir=hashed_mod10_dir,
                         input_adata_path=input_file,
                         batch_key=batch_key,
                         sample_key=sample_key,
@@ -935,19 +996,19 @@ if __name__ == "__main__":
                         microenv_key=microenv_key,
                         module_1_dir=module_1_dir,
                         module_3_dir=module_3_dir,
-                        module_5_dir=module_5_dir,
-                        module_6_dir=module_6_dir,
+                        module_5_dir=hash5,
+                        module_6_dir=hash6,
                         module_7_dir=module_7_dir,
-                        module_8_dir=module_8_dir,
-                        module_8b_dir=module_8b_dir,
-                        module_8c_dir=module_8c_dir,
-                        module_9_dir=module_9_dir,
+                        module_8_dir=hash8,
+                        module_8b_dir=hash8b,
+                        module_8c_dir=hash8c,
+                        module_9_dir=hash9,
                         analysis_name=analysis_name,
                         spatial_key=spatial_key,
                         data_type=data_type,
                         settings=settings,
                         DEAnalysis=DEAnalysis,
-                        anno_keywords=anno_keywords
+                        anno_keywords=anno_keywords,
                     )
 
         logger.info(

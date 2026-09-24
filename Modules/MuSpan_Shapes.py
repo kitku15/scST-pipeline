@@ -1,8 +1,9 @@
 """Muspan module - Shapes analysis."""
 
+import logging
 import warnings
-from logging import getLogger
 from pathlib import Path
+from typing import List, Optional, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,20 +11,19 @@ import pandas as pd
 import seaborn as sns
 
 warnings.filterwarnings("ignore")
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 try:
     import muspan as ms
 except ModuleNotFoundError as err:
-    logger.info(
-        "Could not load MuSpAn. Install with:\n"
-        "    pip install 'recode_st[muspan]' @ git+https://github.com/ImperialCollegeLondon/ReCoDe-spatial-transcriptomics.git"
+    logger.error(
+        "Could not load MuSpAn. Ensure it is installed via the recode_st package."
     )
     raise err
 
 
-def ms_shapedesc(domain):
-    # Compute metrics
+def ms_shapedesc(domain: Any) -> Any:
+    """Calculates shape descriptors and generates a 2x2 plot."""
     logger.info("Calculating shape descriptors...")
 
     # 1. Area
@@ -85,7 +85,10 @@ def ms_shapedesc(domain):
     return plt
 
 
-def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
+def ms_PrAxis(
+    domain: Any, chosen_cluster: str, cluster_list: Optional[List[str]] = None
+) -> Any:
+    """Calculates shape orientation via principle axis and generates density/spatial plots."""
     logger.info("Calculating shape orientation via principle axis...")
 
     if cluster_list is None:
@@ -101,7 +104,7 @@ def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
         domain,
     )
 
-    # 2. Calculate angles
+    # Calculate angles
     angles_dict = {}
     for cluster in cluster_list:
         cluster_cells = ms.query.query_container(
@@ -116,7 +119,7 @@ def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
         )
         angles_dict[cluster] = angles
 
-    # 3. Set up the figure
+    # Set up the figure
     fig = plt.figure(figsize=(10, 7))
     gs = fig.add_gridspec(2, 2)
     ax1 = fig.add_subplot(gs[0, :])
@@ -137,7 +140,7 @@ def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
     ax1.set_ylabel("Density")
     ax1.legend()
 
-    # 5. Visualise domain with principle axis
+    # Visualise domain with principle axis
     ms.visualise.visualise(
         domain,
         color_by=("constant", [0.7, 0.7, 0.7, 1]),
@@ -155,8 +158,7 @@ def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
         vmax=3.14 / 2,
     )
 
-    # 6. EXACT ORIGINAL CODE: Visualise the chosen_cluster
-    # Because we aren't interfering, MuSpAn will automatically draw its perfect native colorbar
+    # Visualise the chosen_cluster
     ms.visualise.visualise(
         domain,
         color_by=("constant", [0.7, 0.7, 0.7, 1]),
@@ -175,149 +177,36 @@ def ms_PrAxis(domain, chosen_cluster, cluster_list=None):
     return plt
 
 
-def ms_PointstoShape(domain, chosen_cluster, cell_type):
-    # 1. Query the specific Leiden cluster (replace '1' with your target cluster)
-    cluster_cells = ms.query.query(domain, ("label", chosen_cluster), "is", cell_type)
-
-    # 2. Query to ensure we are only looking at Cell centroids
-    centroids = ms.query.query(domain, ("collection",), "is", "Cell centroids")
-
-    # 3. Combine them so you only get Cell centroids that belong to cluster '1'
-    target_population = ms.query.query_container(cluster_cells, "AND", centroids)
-
-    # Visualize to ensure you've grabbed the right points before proceeding
-    # ms.visualise.visualise(
-    #     domain, color_by=("label", chosen_cluster), objects_to_plot=target_population
-    # )
-
-    # Create a figure with 4 subplots
-    fig, axes = plt.subplots(1, 4, figsize=(12, 3))
-
-    # 1. Try significantly larger alpha values based on spatial transcriptomics scales
-    # You may need to add a zero to these if your dataset is very large!
-    test_alphas = [30, 50, 100, 200]
-
-    for i, alpha in enumerate(test_alphas):
-        try:
-            # Convert the objects to a single shape using the alpha shape method
-            new_IDs = domain.convert_objects(
-                population=target_population,
-                object_type="shape",
-                conversion_method="alpha shape",
-                conversion_method_kwargs=dict(alpha=alpha),
-                collection_name=f"Alpha Object {alpha}",
-                inherit_collections=False,
-                return_IDs=True,
-            )
-
-            # Visualize the original cells in grey
-            ms.visualise.visualise(
-                domain,
-                color_by=("constant", "grey"),
-                objects_to_plot=target_population,
-                ax=axes[i],
-                marker_size=1,
-            )
-
-            # Visualize the new alpha shape in red
-            ms.visualise.visualise(
-                domain,
-                color_by=("constant", "red"),
-                objects_to_plot=new_IDs,
-                ax=axes[i],
-            )
-
-            # Set the title for successful subplots
-            axes[i].set_title(f"Alpha = {alpha}")
-
-        except ValueError:
-            # 2. If the alpha is too small and generates the zero-size array error, catch it
-            print(f"Skipping Alpha = {alpha}: Value too small to connect any points.")
-
-            # Plot just the points so you can see why it failed
-            ms.visualise.visualise(
-                domain,
-                color_by=("constant", "grey"),
-                objects_to_plot=target_population,
-                ax=axes[i],
-                marker_size=1,
-            )
-            axes[i].set_title(f"Alpha = {alpha}\n(Failed - Too Small)")
-
-    plot_name = "ms_pts.png"
-    plt.tight_layout()
-    plt.savefig(plot_name)
-    logger.info(f"points to shape plot successfully saved as {plot_name}")
-
-
-def run_muspan_shapes(module_dir, domain, chosen_cluster, selected_celltypes):
-    domain_name = domain.name
-
-    # 1. Shape descriptors
-    plt = ms_shapedesc(domain)
-
-    out_dir = Path(module_dir) / domain_name
-    plot_save = f"{out_dir}/ms_shapes.png"
-    plt.tight_layout()
-    plt.savefig(plot_save)
-    logger.info(f"Shape descriptor plot successfully saved as {plot_save}")
-    plt.close()
-
-    # 2. Principle axis
-    plt = ms_PrAxis(domain, chosen_cluster, selected_celltypes)
-    out_dir = Path(module_dir) / domain_name
-    plot_save = f"{out_dir}/ms_praxis.png"
-    plt.tight_layout()
-    plt.savefig(plot_save)
-    logger.info(f"shape orientation plot successfully saved as {plot_save}")
-
-    # Export Morphometrics to CSV
+def _export_morphometrics_csv(domain: Any, out_dir: Path, chosen_cluster: str) -> None:
+    """Extracts shape metrics and maps them to original string Cell IDs."""
     logger.info("Extracting shape metrics into a CSV for web visualization...")
 
     try:
-        # 1. Grab the "Cell ID" labels directly (Bypasses collection queries!)
-        # This returns numpy arrays which are safely iterable
         cell_ids, cell_id_obj_indices = ms.query.get_labels(domain, "Cell ID")
-        cell_id_dict = dict(zip(list(cell_id_obj_indices), list(cell_ids)))
+        cell_id_dict = dict(zip(cell_id_obj_indices, cell_ids))
 
-        # 2. Grab the "Area (µm²)" labels to identify our boundaries
         # Because Area is only calculated on boundaries, this perfectly isolates them
         areas, boundary_indices = ms.query.get_labels(domain, "Area (µm²)")
         boundary_list = list(boundary_indices)
 
-        logger.info(
-            f"DEBUG: Found {len(cell_id_dict)} Cell IDs and {len(boundary_list)} Boundaries."
-        )
-
-        # 3. Create DataFrame
         df_morph = pd.DataFrame({"boundary_id": boundary_list})
 
-        # 4. Safely map Cell IDs to Boundaries
-        # CASE A: Xenium (The boundaries themselves hold the Cell ID string)
-        if len(boundary_list) > 0 and boundary_list[0] in cell_id_dict:
-            logger.info("DEBUG: Mapping Cell IDs directly from boundaries.")
+        # Map logic (CosMx vs Xenium architecture diff)
+        if boundary_list and boundary_list[0] in cell_id_dict:
             df_morph["Cell_ID"] = df_morph["boundary_id"].map(cell_id_dict)
-
-        # CASE B: CosMx (The centroids hold the Cell ID string, but they are generated 1:1)
         elif len(boundary_list) == len(cell_id_dict):
-            logger.info(
-                "DEBUG: Mapping Cell IDs via 1:1 order alignment (Centroids to Boundaries)."
-            )
-            # Sort the internal IDs to guarantee perfect 1:1 alignment
             sorted_bounds = sorted(boundary_list)
             sorted_cents = sorted(list(cell_id_dict.keys()))
             b_to_c = dict(zip(sorted_bounds, sorted_cents))
-
             df_morph["Cell_ID"] = df_morph["boundary_id"].map(
                 lambda b: cell_id_dict.get(b_to_c.get(b))
             )
         else:
             logger.warning(
-                "DEBUG: Mismatch between number of Cell IDs and Boundaries. Cannot map safely!"
+                "Mismatch between Cell IDs and Boundaries. Cannot map safely!"
             )
             df_morph["Cell_ID"] = None
 
-        # 5. Extract all target metrics
         target_labels = [
             "Area (µm²)",
             "Perimeter (µm)",
@@ -329,46 +218,55 @@ def run_muspan_shapes(module_dir, domain, chosen_cluster, selected_celltypes):
         for label in target_labels:
             if label in domain.labels:
                 vals, idxs = ms.query.get_labels(domain, label)
-                metric_dict = dict(zip(list(idxs), list(vals)))
-                df_morph[label] = df_morph["boundary_id"].map(metric_dict)
+                df_morph[label] = df_morph["boundary_id"].map(dict(zip(idxs, vals)))
 
-        # 5.5 Extract the Cluster labels
-        # The variable 'chosen_cluster' is passed into this function (e.g., 'leiden_n10_r0.1')
         if chosen_cluster in domain.labels:
             cluster_vals, cluster_idxs = ms.query.get_labels(domain, chosen_cluster)
-            cluster_dict = dict(zip(list(cluster_idxs), list(cluster_vals)))
-            df_morph["Cluster"] = df_morph["boundary_id"].map(cluster_dict)
-        else:
-            logger.warning(
-                f"Cluster label '{chosen_cluster}' not found in domain. Cells will be marked 'Unknown'."
+            df_morph["Cluster"] = df_morph["boundary_id"].map(
+                dict(zip(cluster_idxs, cluster_vals))
             )
+        else:
             df_morph["Cluster"] = "Unknown"
 
-        # 6. Clean up and Save
-        df_morph = df_morph.dropna(subset=["Cell_ID"])
-        df_morph = df_morph.drop(columns=["boundary_id"])
+        df_morph = df_morph.dropna(subset=["Cell_ID"]).drop(columns=["boundary_id"])
 
         csv_path = out_dir / "morphometrics.csv"
         df_morph.to_csv(csv_path, index=False)
         logger.info(f"Successfully exported morphometrics to {csv_path}")
 
     except Exception as e:
-        logger.warning(f"Failed to export Morphometrics CSV: {e}")
+        logger.error(f"Failed to export Morphometrics CSV: {e}")
 
 
-if __name__ == "__main__":
-    # CosMx
-    # muspan_domain_path = "C:/Users/bunga/python/Project2/CosMx/Spatial-Transcriptomics-CosMx-Xenium/analysis_Kitam/6_MuSpan/muspan_object_dnaku.muspan"
-    # domain = ms.io.load_domain(muspan_domain_path)
-    # chosen_cluster = "leiden_n50_r1.0"
-    # cluster_list = ["0", "1", "2", "3", "6", "14"]
+def run_muspan_shapes(
+    module_dir: Path,
+    domain: Any,
+    chosen_cluster: str,
+    selected_celltypes: Optional[List[str]] = None,
+) -> None:
+    """Main orchestrator for shape analysis."""
+    out_dir = module_dir / domain.name
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # run_muspan_shapes(domain, chosen_cluster, cluster_list=None)
+    # 1. Shape descriptors
+    try:
+        plt_fig = ms_shapedesc(domain)
+        plt_fig.tight_layout()
+        plt_fig.savefig(out_dir / "ms_shapes.png")
+        plt_fig.close()
+        logger.info("Shape descriptor plot saved.")
+    except Exception as e:
+        logger.warning(f"Failed to generate shape descriptor plot: {e}")
 
-    # Xenium
-    muspan_domain_path = "C:/Users/bunga/python/Project2/CosMx/Spatial-Transcriptomics-CosMx-Xenium/analysis_Tisku/6_MuSpan/muspan_object_pomni.muspan"
-    domain = ms.io.load_domain(muspan_domain_path)
-    chosen_cluster = "leiden_n10_r0.1"
-    cluster_list = ["0", "1", "2"]
+    # 2. Principle axis
+    try:
+        plt_fig_axis = ms_PrAxis(domain, chosen_cluster, selected_celltypes)
+        plt_fig_axis.tight_layout()
+        plt_fig_axis.savefig(out_dir / "ms_praxis.png")
+        plt_fig_axis.close()
+        logger.info("Shape orientation plot saved.")
+    except Exception as e:
+        logger.warning(f"Failed to generate shape orientation plot: {e}")
 
-    run_muspan_shapes(domain, chosen_cluster, cluster_list)
+    # 3. Export CSV
+    _export_morphometrics_csv(domain, out_dir, chosen_cluster)

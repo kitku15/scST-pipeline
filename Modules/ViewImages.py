@@ -4,8 +4,10 @@ import math
 import warnings
 from logging import getLogger
 from pathlib import Path
+from typing import List, Optional, Union
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import scanpy as sc
 import squidpy as sq
@@ -17,8 +19,9 @@ logger = getLogger(__name__)
 
 def plot_embedding_with_legend(adata, embedding_key, color_col, module_dir):
     """Plot an embedding colored by a single column with the legend outside the axes."""
-    is_categorical = color_col in adata.obs.columns and not pd.api.types.is_numeric_dtype(
-        adata.obs[color_col]
+    is_categorical = (
+        color_col in adata.obs.columns
+        and not pd.api.types.is_numeric_dtype(adata.obs[color_col])
     )
 
     if not is_categorical:
@@ -82,37 +85,31 @@ def plot_embedding_with_legend(adata, embedding_key, color_col, module_dir):
 
 
 def run_view_images(
-    data_type,
-    input_adata_path,
-    sample_key,
-    module_dir,
-    gene_list,
-    cluster_name,
-    n_grid_x=10,
-    n_grid_y=10,
-    embedding_key=None,
-    umap_color_columns=None,
-):
-    """Run the image viewing module."""
+    data_type: str,
+    input_adata_path: Union[str, Path],
+    sample_key: str,
+    module_dir: Path,
+    gene_list: List[str],
+    cluster_name: str,
+    n_grid_x: int = 10,
+    n_grid_y: int = 10,
+    embedding_key: Optional[str] = None,
+    umap_color_columns: Optional[Union[str, List[str]]] = None,
+) -> Optional[Path]:
+    """Run the image viewing module robustly."""
 
-    if data_type == "CosMx":
-        spatial_key = "global"
-    elif data_type == "Xenium":
-        spatial_key = "spatial"
-
+    spatial_key = "global" if data_type == "CosMx" else "spatial"
     grid_csv_path = None
 
-    # Create output directories if they do not exist
     module_dir.mkdir(exist_ok=True)
+    sc.settings.figdir = module_dir
 
-    sc.settings.figdir = module_dir  # set the figures dir to not be figures
-
-    # Import data
     logger.info("Loading data...")
     input_adata_path = Path(input_adata_path)
     adata = sc.read_h5ad(input_adata_path)
 
-    if embedding_key in adata.obsm:
+    # 1. Embedding plots
+    if embedding_key is not None and embedding_key in adata.obsm:
         if umap_color_columns is None:
             umap_color_columns = []
         elif isinstance(umap_color_columns, str):
@@ -128,12 +125,12 @@ def run_view_images(
 
             logger.info(f"Plotting embedding: {embedding_key} colored by {color_col}")
             plot_embedding_with_legend(adata, embedding_key, color_col, module_dir)
-    else:
+    elif embedding_key is not None:
         logger.warning(
-            f"Embedding '{embedding_key}' not found in adata.obsm. Skipping UMAP plot."
+            f"Embedding '{embedding_key}' not found in adata.obsm. Skipping embedding plot."
         )
 
-    # View plots
+    # 2. View plots (Tissue Clusters)
     logger.info("Visualize clusters on tissue...")
 
     sq.pl.spatial_scatter(
@@ -160,13 +157,13 @@ def run_view_images(
         f"Saved leiden clusters plot to {module_dir / 'leiden_clusters_all_samples.png'}"
     )
 
-    # 2. View plots (Leiden Clusters with FOV Bounding Boxes)
+    # 3. View plots (Leiden Clusters with FOV Bounding Boxes)
     fov_col = "fov" if "fov" in adata.obs.columns else None
 
     if fov_col:
         logger.info("Plotting clusters with FOV bounding boxes...")
 
-        # LOOP OVER SAMPLES TO DRAW RECTANGLES PROPERLY
+        # Loop over samples to draw rectangles properly
         for sample in adata.obs[sample_key].unique():
             adata_sample = adata[adata.obs[sample_key] == sample].copy()
 
@@ -245,6 +242,7 @@ def run_view_images(
             "No 'fov' or 'FOV' column found in adata.obs. Skipping FOV bounding boxes plot."
         )
 
+    # 4. ROI Grid generation (Xenium)
     if data_type == "Xenium":
         logger.info("Generating spatial ROI grid for Xenium data...")
 
@@ -252,8 +250,11 @@ def run_view_images(
             adata_sample = adata[adata.obs[sample_key] == sample].copy()
             coords = adata_sample.obsm[spatial_key]
 
-            x_min_global, x_max_global = coords[:, 0].min(), coords[:, 0].max()
-            y_min_global, y_max_global = coords[:, 1].min(), coords[:, 1].max()
+            # Defensive calculation against NaNs
+            x_min_global = np.nanmin(coords[:, 0])
+            x_max_global = np.nanmax(coords[:, 0])
+            y_min_global = np.nanmin(coords[:, 1])
+            y_max_global = np.nanmax(coords[:, 1])
 
             x_step = (x_max_global - x_min_global) / n_grid_x
             y_step = (y_max_global - y_min_global) / n_grid_y
@@ -265,7 +266,6 @@ def run_view_images(
                 for col in range(n_grid_x):
                     x_min = x_min_global + col * x_step
                     x_max = x_min_global + (col + 1) * x_step
-
                     y_max = y_max_global - row * y_step
                     y_min = y_max_global - (row + 1) * y_step
 
@@ -330,13 +330,12 @@ def run_view_images(
             plt.close(fig_grid)
 
             # Save coordinates to CSV PER SLIDE so MuSpAn can find them
-            df_grid = pd.DataFrame(box_data)
-            df_grid = df_grid.round(2)
+            df_grid = pd.DataFrame(box_data).round(2)
             grid_csv_path = module_dir / f"Xenium_ROI_grid_coordinates_{sample}.csv"
             df_grid.to_csv(grid_csv_path, index=False)
             logger.info(f"Saved Xenium ROI grid coordinates to {grid_csv_path}")
 
-    # 3. View specific gene expression
+    # 5. View specific gene expression
     logger.info("Plotting genes of interest on tissue...")
     for sample in adata.obs[sample_key].unique():
         logger.info(f"Plotting genes for sample: {sample}...")

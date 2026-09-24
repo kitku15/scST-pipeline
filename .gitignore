@@ -16,3 +16,6 @@ work/
 *.sif
 example.pbs
 *.o*
+*.ignore/
+.snakemake/
+temp_r_libs/
