@@ -210,9 +210,7 @@ def run_muspan_stats(module_dir, domain, cluster_labels, cell_types):
     try:
         import muspan as ms
     except ModuleNotFoundError as err:
-        logger.info(
-            "Could not load MuSpAn."
-        )
+        logger.info("Could not load MuSpAn.")
         raise err
 
     module_dir.mkdir(exist_ok=True)

@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 try:
     import muspan as ms
 except ModuleNotFoundError as err:
-    logger.error(
-        "Could not load MuSpAn."
-    )
+    logger.error("Could not load MuSpAn.")
     raise err
 
 

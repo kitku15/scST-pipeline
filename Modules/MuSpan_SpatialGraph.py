@@ -28,9 +28,7 @@ def run_muspan_graph(
 ):
     """Run Muspan spatial graph analysis on Xenium data."""
     if ms is None:
-        logger.error(
-            "Could not load necessary MuSpAn package."
-        )
+        logger.error("Could not load necessary MuSpAn package.")
         raise ModuleNotFoundError("MuSpAn package not found")
 
     color_map = sns.color_palette("Blues", as_cmap=True)
