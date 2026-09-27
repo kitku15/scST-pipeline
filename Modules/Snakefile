@@ -10,7 +10,7 @@ else:
 from config import generate_run_id
 
 # 1. Load config
-CONFIG_FILE = os.environ.get("RECODE_CONFIG", "configs/config_pCosMx_ds.toml")
+CONFIG_FILE = os.environ.get("scSpatial-Kit", "configs/config_pCosMx_ds.toml")
 with open(CONFIG_FILE, "rb") as f:
     cfg = tomllib.load(f)
 

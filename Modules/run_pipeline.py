@@ -12,7 +12,7 @@ logger = getLogger("Orchestrator")
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run the ReCoDe Pipeline via Snakemake"
+        description="Run the scSpatial-Kit Pipeline via Snakemake"
     )
     parser.add_argument("config_file", help="Path to the TOML config file.")
     parser.add_argument("--cores", type=int, default=32, help="Number of cores to use.")
@@ -21,7 +21,7 @@ def main():
     )
     args = parser.parse_args()
 
-    os.environ["RECODE_CONFIG"] = args.config_file
+    os.environ["scSpatial-Kit"] = args.config_file
 
     cmd = [
         sys.executable,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run the recode_st pipeline.")
+    parser = argparse.ArgumentParser(description="Run the scSpatial-Kit pipeline.")
     parser.add_argument("config_file", help="Path to the TOML config file.")
 
     parser.add_argument(
@@ -34,7 +34,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    os.environ["RECODE_CONFIG"] = args.config_file
+    os.environ["scSpatial-Kit"] = args.config_file
 
     from Annotate import run_annotate
     from CellPhonedb import plot_cellphonedb, run_cellphonedb
@@ -105,7 +105,7 @@ if __name__ == "__main__":
                 )
                 sys.exit(1)
 
-    logger.info("Starting recode_st pipeline...")
+    logger.info("Starting scSpatial-Kit pipeline...")
 
     # Global settings
     analysis_name = settings.project.analysis_name

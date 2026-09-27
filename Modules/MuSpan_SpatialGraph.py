@@ -29,9 +29,7 @@ def run_muspan_graph(
     """Run Muspan spatial graph analysis on Xenium data."""
     if ms is None:
         logger.error(
-            "Could not load necessary MuSpAn package. You can obtain this with:\n"
-            "    pip install 'recode_st[muspan] @ git+"
-            "https://github.com/ImperialCollegeLondon/ReCoDe-spatial-transcriptomics.git"
+            "Could not load necessary MuSpAn package."
         )
         raise ModuleNotFoundError("MuSpAn package not found")
 

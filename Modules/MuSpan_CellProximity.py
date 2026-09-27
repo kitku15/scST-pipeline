@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 try:
     import muspan as ms
 except ModuleNotFoundError as err:
-    logger.info("Could not load MuSpAn. Install with: pip install 'recode_st[muspan]'")
+    logger.info("Could not load MuSpAn.")
     raise err
 
 

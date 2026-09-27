@@ -211,8 +211,7 @@ def run_muspan_stats(module_dir, domain, cluster_labels, cell_types):
         import muspan as ms
     except ModuleNotFoundError as err:
         logger.info(
-            "Could not load MuSpAn. Install with:\n"
-            "    pip install 'recode_st[muspan]' @ git+https://github.com/ImperialCollegeLondon/ReCoDe-spatial-transcriptomics.git"
+            "Could not load MuSpAn."
         )
         raise err
 

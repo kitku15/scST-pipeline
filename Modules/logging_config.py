@@ -20,7 +20,7 @@ def configure_logging(logging_dir: Path | None = None, log_level=logging.INFO):
 
     ch = logging.StreamHandler()
     fh = logging.FileHandler(
-        logging_dir / f"recode_st-{time.strftime('%Y%m%d-%H%M%S')}.log"
+        logging_dir / f"scSpatial-Kit-{time.strftime('%Y%m%d-%H%M%S')}.log"
     )
 
     formatter = logging.Formatter(

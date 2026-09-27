@@ -170,7 +170,7 @@ class WebVisPrepConfig(BaseModel):
 
 # --- Loader ---
 def load_config() -> AppConfig:
-    config_path_str = os.getenv("RECODE_CONFIG", "config_CosMx.toml")
+    config_path_str = os.getenv("scSpatial-Kit", "config_CosMx.toml")
     config_path = Path(config_path_str)
 
     if not config_path.exists():

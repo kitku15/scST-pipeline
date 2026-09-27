@@ -17,7 +17,7 @@ try:
     import muspan as ms
 except ModuleNotFoundError as err:
     logger.error(
-        "Could not load MuSpAn. Ensure it is installed via the recode_st package."
+        "Could not load MuSpAn."
     )
     raise err
 

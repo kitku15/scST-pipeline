@@ -1,4 +1,4 @@
-# General Single-cell Spatial Transcriptomics Pipeline
+# scSpatial-Kit
 
 An end-to-end Python pipeline for the processing, analysis, and visualization of Spatial Transcriptomics data. Built specifically to handle **NanoString CosMx** and **10x Genomics Xenium** datasets, this pipeline uses modern spatial data frameworks (spatialdata, scanpy, squidpy), advanced spatial statistics (muspan), downstream TF/CCC Analysis, and Causal Network Inference. 
 
@@ -459,7 +459,7 @@ Then to queue the job, run on the command line:
 ```bash
 qsub 02_run_downstream.sh
 ```
-## 🛠️ Pipeline Orchestration & Modifying Parameters
+## Pipeline Orchestration & Modifying Parameters
 
 - **Config mistake**: If the pipeline crashes on because of a typo in your config, fix the typo in the .toml and run `qsub 02_run_downstream.sh` again. The pipeline will skip them finished modules and resume exactly where it left off.
 - **Running a subset of modules**: Change the modules = [...] list in the TOML to only include modules you want to run.

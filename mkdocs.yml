@@ -1,0 +1,102 @@
+site_name: 'scSpatial-Kit'
+site_description: An end-to-end spatial transcriptomics pipeline, companion to Spatial-VisKit.
+site_author: Syaii - Korcsmaros Group
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/icon.png
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    # Light Mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: pink      
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    # Dark Mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: pink      
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+copyright: >
+  <a href="https://www.korcsmaroslab.org/" target="_blank" rel="noopener">
+    <img src="https://www.korcsmaroslab.org/wp-content/themes/Divi/images/logo.png" alt="Korcsmaros Group" style="height: 80px; margin-top: 10px;">
+  </a>
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kitku15
+      name: Syaii (author & dev) on GitHub
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/bunga-tiasyaira/
+      name: Syaii (author & dev) on LinkedIn
+
+extra_css:
+  - stylesheets/custom.css
+
+markdown_extensions:
+  - admonition                # Info, warning, error boxes
+  - pymdownx.details          # Collapsible sections
+  - pymdownx.superfences      # Better code blocks
+  - pymdownx.tabbed
+  - pymdownx.highlight        # Syntax highlighting
+  - pymdownx.inlinehilite
+  - pymdownx.snippets         # Include external code files
+  - attr_list                 # Add HTML attributes to Markdown
+  - md_in_html                # Markdown inside HTML
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - Inputs: getting-started/inputs.md
+    - Running the Pipeline: getting-started/running.md
+  - Pipeline Modules:
+    - Data Formatting: modules/0_format.md
+    - Quality Control: modules/1_qc.md
+    - Dimension Reduction: modules/2_dimreduc.md
+    - Cell Annotation: modules/3_annotation.md
+    - Spatial Visualization: modules/4_view_images.md
+    - Spatial Statistics: modules/5_spatial_stats.md
+    - Morphometrics & Networks: modules/6_muspan.md
+    - TF Enrichment: modules/7_decoupler.md
+    - Cell-Cell Communication: modules/8_ccc.md
+    - Condition DE Analysis: modules/9_de_analysis.md
+    - Web Export: modules/10_webvis.md
+  - Web Visualization:
+    - Home: svk/home.md
+    - Getting Started: svk/getting-started.md
+    - Visualization Tabs:
+      - Explore (Lite & Full Mode):
+        - Interactive Explorer: svk/explore/interactive-explorer.md
+        - Cell Type Annotation: svk/explore/cell-type-annotation.md
+        - Composition Analysis: svk/explore/composition-analysis.md
+        - Multiplex Overlay: svk/explore/multiplex-overlay.md
+      - Analysis Outputs (Full Mode):
+        - Quality Control: svk/analysis/quality-control.md
+        - Spatial Statistics: svk/analysis/spatial-statistics.md
+        - Transcription Factor Analysis: svk/analysis/transcription-factor.md
+        - Cell-Cell Communication: svk/analysis/cell-cell-communication.md
+        - Spatial CCC: svk/analysis/spatial-ccc.md
+        - Cell Type DE Analysis: svk/analysis/de-analysis.md
+        - Conditions DE Analysis: svk/analysis/conditions-de.md
+        - Condition Signaling (Causal): svk/analysis/condition-signaling.md
