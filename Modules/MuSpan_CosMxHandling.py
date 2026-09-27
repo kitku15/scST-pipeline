@@ -361,5 +361,7 @@ def cosmx_initial_plotting(
         ax[1].set_title(f"Cell Centroids by {cluster_labels} (No Boundaries)")
 
     plt.tight_layout()
-    plt.savefig(out_dir / "muspan_cosmx_visualization.png", dpi=300)
+    domain_dir = out_dir / "domain"
+    domain_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(domain_dir / "muspan_cosmx_visualization.png", dpi=300)
     plt.close()

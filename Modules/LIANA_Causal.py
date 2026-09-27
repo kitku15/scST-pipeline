@@ -133,6 +133,8 @@ def run_pseudobulk_dea_with_shrinkage(
 
 def _save_plots(output_dir: Path, lr_res: pd.DataFrame) -> None:
     """Generates standard diagnostic plots for condition-specific ligand-receptor interactions."""
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
     try:
         fig, ax = plt.subplots(figsize=(6, 4))
         lr_res["interaction_stat"].hist(bins=50, ax=ax)
@@ -140,7 +142,7 @@ def _save_plots(output_dir: Path, lr_res: pd.DataFrame) -> None:
         ax.set_xlabel("Interaction Stat (Wald)")
         ax.set_ylabel("Count")
         plt.tight_layout()
-        plt.savefig(output_dir / "interaction_stat_histogram.png", dpi=300)
+        plt.savefig(plots_dir / "interaction_stat_histogram.png", dpi=300)
         plt.close()
     except Exception as e:
         logger.warning(f"Could not generate interaction histogram: {e}")
@@ -158,7 +160,7 @@ def _save_plots(output_dir: Path, lr_res: pd.DataFrame) -> None:
             source_title="Ligand",
             target_title="Receptor",
         )
-        tile_gg.save(str(output_dir / "liana_tileplot.png"), dpi=300, width=8, height=8)
+        tile_gg.save(str(plots_dir / "liana_tileplot.png"), dpi=300, width=8, height=8)
     except Exception as e:
         logger.warning(f"Could not generate LIANA tileplot: {e}")
 

@@ -78,7 +78,7 @@ def plot_embedding_with_legend(adata, embedding_key, color_col, module_dir):
             borderaxespad=0,
         )
 
-    umap_out = module_dir / f"embedding_{embedding_key}_{color_col}.png"
+    umap_out = module_dir / "embedding_plots" / f"embedding_{embedding_key}_{color_col}.png"
     fig.savefig(umap_out, dpi=300, facecolor="white", bbox_inches="tight")
     plt.close(fig)
     logger.info(f"Saved embedding plot to {umap_out}")
@@ -102,6 +102,9 @@ def run_view_images(
     grid_csv_path = None
 
     module_dir.mkdir(exist_ok=True)
+    (module_dir / "embedding_plots").mkdir(exist_ok=True)
+    (module_dir / "ROI_grids").mkdir(exist_ok=True)
+    (module_dir / "gene_expression").mkdir(exist_ok=True)
     sc.settings.figdir = module_dir
 
     logger.info("Loading data...")
@@ -323,7 +326,7 @@ def run_view_images(
                     ),
                 )
 
-            grid_plot_path = module_dir / f"Xenium_ROI_grid_{sample}.png"
+            grid_plot_path = module_dir / "ROI_grids" / f"Xenium_ROI_grid_{sample}.png"
             fig_grid.savefig(
                 grid_plot_path, dpi=300, facecolor="white", bbox_inches="tight"
             )
@@ -331,7 +334,7 @@ def run_view_images(
 
             # Save coordinates to CSV PER SLIDE so MuSpAn can find them
             df_grid = pd.DataFrame(box_data).round(2)
-            grid_csv_path = module_dir / f"Xenium_ROI_grid_coordinates_{sample}.csv"
+            grid_csv_path = module_dir / "ROI_grids" / f"Xenium_ROI_grid_{sample}.csv"
             df_grid.to_csv(grid_csv_path, index=False)
             logger.info(f"Saved Xenium ROI grid coordinates to {grid_csv_path}")
 
@@ -372,7 +375,7 @@ def run_view_images(
             fig=fig,
         )
 
-        out_filename = module_dir / f"gene_expression_{sample}.png"
+        out_filename = module_dir / "gene_expression" / f"gene_expression_{sample}.png"
         fig.savefig(out_filename, dpi=300, facecolor="white", bbox_inches="tight")
         plt.close(fig)
         logger.info(f"Saved gene expression plot to {out_filename}")

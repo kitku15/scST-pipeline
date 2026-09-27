@@ -128,7 +128,9 @@ def microenvironment_split(
             fig=fig,
         )
 
-        save_path = module_dir / f"microenvironment_res{resolution}_{sample}.png"
+        plots_dir = module_dir / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        save_path = plots_dir / f"microenvironment_res{resolution}_{sample}.png"
         fig.savefig(save_path, dpi=150, facecolor="white", bbox_inches="tight")
         plt.close(fig)
 
@@ -198,7 +200,7 @@ def _plot_dotplot(
             alpha=0.05,
         ) + theme(legend_position="right")
 
-        outfile = save_dir / f"dotplot_{env_str}.png"
+        outfile = save_dir / f"{celltype}_dotplot_{env_str}.png"
         p.save(filename=str(outfile), dpi=150, limitsize=False)
         logger.info(f"Dot plot saved to {outfile}")
         del p
@@ -237,13 +239,13 @@ def _plot_chordplot(
                 "adjust_rotation": True,
             },
             link_offset=1,
-            legend_save_path=str(save_dir / f"chordplot_legend_{env_str}.png"),
+            legend_save_path=str(save_dir / f"{celltype}_chordplot_legend_{env_str}.png"),
         )
         fig = plt.gcf()
         fig.set_size_inches(12, 10)
-        fig.savefig(str(save_dir / f"chordplot_{env_str}.png"), dpi=150)
+        fig.savefig(str(save_dir / f"{celltype}_chordplot_{env_str}.png"), dpi=150)
         plt.close(fig)
-        logger.info(f"Chord Diagram saved to {save_dir / f'chordplot_{env_str}.png'}")
+        logger.info(f"Chord Diagram saved to {save_dir / f'{celltype}_chordplot_{env_str}.png'}")
     except Exception as e:
         logger.error(f"Failed to generate Chord plot for {celltype}: {e}")
 
@@ -309,10 +311,12 @@ def plot_cellphonedb(
     logger.info(f"Loaded Deconvoluted from: {decon_file.name}")
 
     # Heatmaps
+    hm_dir = module_dir / "heatmaps"
+    hm_dir.mkdir(exist_ok=True)
     logger.info("Generating symmetrical heatmap...")
     g1 = kpy.plot_cpdb_heatmap(pvals=pvals, figsize=(10, 10), title="Symmetrical")
     g1.savefig(
-        str(module_dir / "cpdb_heatmap_symmetrical.png"), dpi=150, bbox_inches="tight"
+        str(hm_dir / "cpdb_heatmap_symmetrical.png"), dpi=150, bbox_inches="tight"
     )
 
     logger.info("Generating asymmetrical heatmap...")
@@ -320,7 +324,7 @@ def plot_cellphonedb(
         pvals=pvals, figsize=(10, 10), title="Asymmetrical", symmetrical=False
     )
     g2.savefig(
-        str(module_dir / "cpdb_heatmap_asymmetrical.png"), dpi=150, bbox_inches="tight"
+        str(hm_dir / "cpdb_heatmap_asymmetrical.png"), dpi=150, bbox_inches="tight"
     )
     plt.close("all")
 
@@ -389,8 +393,10 @@ def plot_cellphonedb(
                 plot_means, plot_pvals = means.copy(), pvals.copy()
                 plot_title, env_str = f"{celltype} interactions (Global)", "Global"
 
-            save_dir = module_dir / celltype
-            save_dir.mkdir(exist_ok=True)
+            dot_dir = module_dir / "dot_plots"
+            dot_dir.mkdir(exist_ok=True)
+            chord_dir = module_dir / "chord_plots"
+            chord_dir.mkdir(exist_ok=True)
 
             _plot_dotplot(
                 adata,
@@ -402,7 +408,7 @@ def plot_cellphonedb(
                 dot_sig_only,
                 plot_title,
                 env_str,
-                save_dir,
+                dot_dir,
             )
             _plot_chordplot(
                 adata,
@@ -414,7 +420,7 @@ def plot_cellphonedb(
                 target_genes,
                 chord_sig_only,
                 env_str,
-                save_dir,
+                chord_dir,
             )
             gc.collect()
 
@@ -435,8 +441,10 @@ def plot_cellphonedb(
                 default_style=False,
                 alpha=1.01,
             )
+            plots_dir = module_dir / "plots"
+            plots_dir.mkdir(exist_ok=True)
             p.save(
-                filename=str(module_dir / f"{gene_family}_interactions.png"),
+                filename=str(plots_dir / f"{gene_family}_interactions.png"),
                 dpi=150,
                 limitsize=False,
             )

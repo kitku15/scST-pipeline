@@ -244,13 +244,14 @@ def run_muspan_shapes(
 ) -> None:
     """Main orchestrator for shape analysis."""
     out_dir = module_dir / domain.name
-    out_dir.mkdir(parents=True, exist_ok=True)
+    shape_dir = out_dir / "shape_analysis"
+    shape_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Shape descriptors
     try:
         plt_fig = ms_shapedesc(domain)
         plt_fig.tight_layout()
-        plt_fig.savefig(out_dir / "ms_shapes.png")
+        plt_fig.savefig(shape_dir / "ms_shapes.png")
         plt_fig.close()
         logger.info("Shape descriptor plot saved.")
     except Exception as e:
@@ -260,11 +261,11 @@ def run_muspan_shapes(
     try:
         plt_fig_axis = ms_PrAxis(domain, chosen_cluster, selected_celltypes)
         plt_fig_axis.tight_layout()
-        plt_fig_axis.savefig(out_dir / "ms_praxis.png")
+        plt_fig_axis.savefig(shape_dir / "ms_praxis.png")
         plt_fig_axis.close()
         logger.info("Shape orientation plot saved.")
     except Exception as e:
         logger.warning(f"Failed to generate shape orientation plot: {e}")
 
     # 3. Export CSV
-    _export_morphometrics_csv(domain, out_dir, chosen_cluster)
+    _export_morphometrics_csv(domain, shape_dir, chosen_cluster)

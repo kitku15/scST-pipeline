@@ -163,6 +163,7 @@ def run_spatial_statistics(
     cluster_name: str,
     condition_key: str = None,
     reference_condition: str = None,
+    subsample_fraction: float = 1.0,
     skip_compute: bool = False,
 ):
     """Run spatial statistics."""

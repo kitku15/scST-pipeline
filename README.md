@@ -13,7 +13,7 @@ More visual indepth explanation of the pipeline presented [here](https://docs.go
 - Cell-Cell Communication (CCC) & Causal Networks - Broad microenvironment CCC via [CellphoneDB](https://cellphonedb.readthedocs.io/en/latest), continuous spatial CCC via LIANA+, and downstream causal signaling cascade inference via Corneto.
 - Prepares and packages all results (Zarr, JSON) into a `.tar` archive for local exploration using the [Spatial-VisKit](https://github.com/kitku15/Spatial-VisKit) React web application.
 - Run pipeline reproducibly on HPC clusters (or locally) using Apptainer/Singularity containers, controlled via TOML configuration files.
-- Uses Snakemake to run independent modules in parallel, making efficient use of HPC resources and automatically resuming from where a failed run stopped.
+- **Dual Execution Modes:** Run the pipeline end-to-end via **Snakemake** for automated parallel DAG resolution, or execute modules directly using the built-in Python orchestrator (`__main__.py`)—perfect for manual debugging or managing massive HPC PBS/Slurm Job Arrays.
 - Start from raw machine outputs, or use your own pre-processed .h5ad file.
 
 ## ⭐ Pipeline Structure

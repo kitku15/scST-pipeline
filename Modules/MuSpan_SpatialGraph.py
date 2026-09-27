@@ -122,7 +122,9 @@ def plot_delaunay_networks(domain, module_dir):
 
     domain_name = domain.name
     plt.tight_layout()
-    plt.savefig(module_dir / domain_name / "muspan_delaunay.png")
+    net_dir = module_dir / domain_name / "networks"
+    net_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(net_dir / "muspan_delaunay.png")
     logger.info("Delaunay networks plotted and saved")
 
 
@@ -285,7 +287,9 @@ def plot_proximity_shape(domain, module_dir):
     )
     domain_name = domain.name
     plt.tight_layout()
-    plt.savefig(module_dir / domain_name / "muspan_proximity_shape.png")
+    net_dir = module_dir / domain_name / "networks"
+    net_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(net_dir / "muspan_proximity_shape.png")
     logger.info("Proximity networks (shape-like objects) plotted and saved")
 
 
@@ -348,7 +352,9 @@ def plot_knn_networks(domain, module_dir, color_map, k_list):
         )
     domain_name = domain.name
     plt.tight_layout()
-    plt.savefig(module_dir / domain_name / "muspan_knn.png")
+    net_dir = module_dir / domain_name / "networks"
+    net_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(net_dir / "muspan_knn.png")
     logger.info("KNN networks plotted and saved")
 
 
@@ -438,5 +444,7 @@ def plot_proximity_networks(domain, module_dir, color_map, distance_list):
         )
     domain_name = domain.name
     plt.tight_layout()
-    plt.savefig(module_dir / domain_name / "muspan_proximity_point.png")
+    net_dir = module_dir / domain_name / "networks"
+    net_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(net_dir / "muspan_proximity_point.png")
     logger.info("Proximity networks (point-like objects) plotted and saved")

@@ -84,6 +84,8 @@ def _generate_spatial_diagnostics(
 ) -> None:
     """Generates diagnostic plots for LIANA+ spatial bandwidth and connectivity."""
     logger.info("Generating LIANA+ spatial graph diagnostic plots...")
+    plots_dir = module_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
 
     # Grab the first sample to use as a representative layout
     first_sample = adata.obs[sample_key].unique()[0]
@@ -98,7 +100,7 @@ def _generate_spatial_diagnostics(
             coordinates=coords, start=0, end=end_bw, interval_n=20, figure_size=(6, 5)
         )
 
-        bw_path = module_dir / "liana_bandwidth_diagnostic.png"
+        bw_path = plots_dir / "liana_bandwidth_diagnostic.png"
         if hasattr(plot_bw, "save"):
             plot_bw.save(bw_path, width=6, height=5, dpi=300, verbose=False)
         else:
@@ -137,7 +139,7 @@ def _generate_spatial_diagnostics(
                 figure_size=(6, 5),
             )
 
-            conn_path = module_dir / f"liana_connectivity_bw{bw}_{first_sample}.png"
+            conn_path = plots_dir / f"liana_connectivity_bw{bw}_{first_sample}.png"
             if hasattr(plot_conn, "save"):
                 plot_conn.save(conn_path, width=6, height=5, dpi=300, verbose=False)
             else:
@@ -235,8 +237,10 @@ def run_liana_pipeline(
             dpi=300,
             figsize=(10, 6),
         )
+        plots_dir = module_dir / "plots"
+        plots_dir.mkdir(exist_ok=True)
         plt.savefig(
-            module_dir / "top_LR_spatial_patterns.png", dpi=300, bbox_inches="tight"
+            plots_dir / "top_LR_spatial_patterns.png", dpi=300, bbox_inches="tight"
         )
         plt.close()
 
@@ -282,7 +286,7 @@ def run_liana_pipeline(
         dpi=300,
         figsize=(10, 6),
     )
-    plt.savefig(module_dir / "NMF_spatial_factors.png", dpi=300, bbox_inches="tight")
+    plt.savefig(plots_dir / "NMF_spatial_factors.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     # 6. Generalized Bivariate (Cross-talk between TFs and LR pairs)
@@ -390,7 +394,7 @@ def run_liana_pipeline(
                 vmin=-1,
             )
             plt.savefig(
-                module_dir / "top_TF_LR_correlations.png", dpi=300, bbox_inches="tight"
+                plots_dir / "top_TF_LR_correlations.png", dpi=300, bbox_inches="tight"
             )
             plt.close()
     else:

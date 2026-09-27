@@ -94,7 +94,9 @@ def xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict=N
     ax[1, 1].set_title("Nuclei")
 
     plt.tight_layout()
-    plt.savefig(out_dir / "muspan_domain_visualization.png")
+    domain_dir = out_dir / "domain"
+    domain_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(domain_dir / "muspan_domain_visualization.png")
 
     # Convert boundaries to centroids
     logger.info("Convert cell boundaries to cell centres (centroids)")
@@ -115,7 +117,7 @@ def xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict=N
         ax=plt.gca(),
     )
     plt.tight_layout()
-    plt.savefig(out_dir / "muspan_cell_centroids.png")
+    plt.savefig(domain_dir / "muspan_cell_centroids.png")
 
     # Plotting 3: Overlay (Xenium)
     plt.figure(figsize=(10, 6))
@@ -131,5 +133,5 @@ def xenium_initial_plotting(adata, domain, cluster_labels, out_dir, color_dict=N
         add_cbar=False,
     )
     plt.tight_layout()
-    plt.savefig(out_dir / "muspan_cell_centroids_n_boundaries.png")
+    plt.savefig(domain_dir / "muspan_cell_centroids_n_boundaries.png")
     plt.close("all")

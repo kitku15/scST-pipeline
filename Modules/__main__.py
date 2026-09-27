@@ -466,6 +466,7 @@ if __name__ == "__main__":
                         cluster_name=cluster_name,
                         condition_key=condition_key,
                         reference_condition=reference_condition,
+                        subsample_fraction=spatial_settings.get("subsample_fraction", 1.0),
                         skip_compute=False,
                     )
 

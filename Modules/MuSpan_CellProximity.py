@@ -341,7 +341,9 @@ def run_ms_cellproximity(
         max_distance,
         my_colors,
     )
-    plt_contact.savefig(f"{out_dir}/contact_statistics.png")
+    prox_dir = out_dir / "proximity_analysis"
+    prox_dir.mkdir(parents=True, exist_ok=True)
+    plt_contact.savefig(prox_dir / "contact_statistics.png")
     plt_contact.close()
 
     # 4. Plot a zoomed-in plot around a cell
@@ -368,7 +370,7 @@ def run_ms_cellproximity(
             1,
             50,
         )
-        plt_zoom.savefig(f"{out_dir}/zoomed_khop_neighborhood.png")
+        plt_zoom.savefig(prox_dir / "zoomed_khop_neighborhood.png")
         plt_zoom.close()
 
     # 5. Plot the full spatial network colored by cluster labels
@@ -382,7 +384,7 @@ def run_ms_cellproximity(
         (12, 10),
         5.0,
     )
-    plt_global.savefig(f"{out_dir}/global_proximity_network.png")
+    plt_global.savefig(prox_dir / "global_proximity_network.png")
     plt_global.close()
 
     # 6. Export Proximity Matrices to CSV
@@ -393,7 +395,7 @@ def run_ms_cellproximity(
             columns=selected_celltypes + ["Other"],
         )
         df_contact.index.name = "Source_CellType"
-        df_contact.to_csv(out_dir / "contact_composition.csv")
+        df_contact.to_csv(prox_dir / "contact_composition.csv")
         logger.info("Exported contact_composition.csv")
     except Exception as e:
         logger.warning(f"Failed to export contact composition CSV: {e}")

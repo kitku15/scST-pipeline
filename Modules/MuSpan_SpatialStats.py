@@ -61,12 +61,10 @@ def calculate_and_plot_cross_pcf(
         )
 
         domain_name = domain.name
+        stat_dir = module_dir / domain_name / "spatial_stats"
+        stat_dir.mkdir(parents=True, exist_ok=True)
         # Save PCF plot
-        pcf_plot_path = (
-            module_dir
-            / domain_name
-            / f"cross_pair_correlation_function_{cell_type_1}_{cell_type_2}.png"
-        )
+        pcf_plot_path = stat_dir / f"cross_pair_correlation_function_{cell_type_1}_{cell_type_2}.png"
         plt.savefig(pcf_plot_path)
         logger.info(f"Cross-PCF plot saved at {pcf_plot_path}")
 
@@ -87,10 +85,7 @@ def calculate_and_plot_cross_pcf(
         ax.set_xlabel(f"{cell_type_1}", fontsize=15)
         ax.set_ylabel(f"{cell_type_2}", fontsize=15)
 
-        domain_name = domain.name
-        vis_plot_path = (
-            module_dir / domain_name / f"visualize_{cell_type_1}_{cell_type_2}.png"
-        )
+        vis_plot_path = stat_dir / f"visualize_{cell_type_1}_{cell_type_2}.png"
         plt.savefig(vis_plot_path)
         logger.info(f"Visualization saved at {vis_plot_path}")
 
@@ -187,9 +182,9 @@ def calculate_pairwise_cross_pcf(
                     axes[i, j].axis("off")
 
     domain_name = domain.name
-    output_path = (
-        Path(module_dir) / domain_name / "cross_pair_correlation_function_all.png"
-    )
+    stat_dir = Path(module_dir) / domain_name / "spatial_stats"
+    stat_dir.mkdir(parents=True, exist_ok=True)
+    output_path = stat_dir / "cross_pair_correlation_function_all.png"
 
     if plot_matrix:
         plt.tight_layout()
@@ -198,7 +193,7 @@ def calculate_pairwise_cross_pcf(
         logger.info(f"Cross-PCF matrix plot saved at {output_path}")
 
     # Write out the JSON file (This always runs, regardless of plotting)
-    json_output_path = Path(module_dir) / domain_name / "cross_pcf_all.json"
+    json_output_path = stat_dir / "cross_pcf_all.json"
     with open(json_output_path, "w") as f:
         json.dump(cross_pcf_json, f)
 
@@ -285,7 +280,7 @@ def aggregate_muspan_across_conditions(
             logger.warning(f"Could not find {morph_file}")
 
         # Gather Contacts
-        contact_file = sample_dir / "contact_composition.csv"
+        contact_file = sample_dir / "proximity_analysis" / "contact_composition.csv"
         if contact_file.exists():
             df_cont = pd.read_csv(contact_file, index_col=0)
             if condition not in contact_dict:
