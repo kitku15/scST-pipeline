@@ -78,7 +78,9 @@ def plot_embedding_with_legend(adata, embedding_key, color_col, module_dir):
             borderaxespad=0,
         )
 
-    umap_out = module_dir / "embedding_plots" / f"embedding_{embedding_key}_{color_col}.png"
+    umap_out = (
+        module_dir / "embedding_plots" / f"embedding_{embedding_key}_{color_col}.png"
+    )
     fig.savefig(umap_out, dpi=300, facecolor="white", bbox_inches="tight")
     plt.close(fig)
     logger.info(f"Saved embedding plot to {umap_out}")

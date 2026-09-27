@@ -64,7 +64,10 @@ def calculate_and_plot_cross_pcf(
         stat_dir = module_dir / domain_name / "spatial_stats"
         stat_dir.mkdir(parents=True, exist_ok=True)
         # Save PCF plot
-        pcf_plot_path = stat_dir / f"cross_pair_correlation_function_{cell_type_1}_{cell_type_2}.png"
+        pcf_plot_path = (
+            stat_dir
+            / f"cross_pair_correlation_function_{cell_type_1}_{cell_type_2}.png"
+        )
         plt.savefig(pcf_plot_path)
         logger.info(f"Cross-PCF plot saved at {pcf_plot_path}")
 

@@ -239,13 +239,17 @@ def _plot_chordplot(
                 "adjust_rotation": True,
             },
             link_offset=1,
-            legend_save_path=str(save_dir / f"{celltype}_chordplot_legend_{env_str}.png"),
+            legend_save_path=str(
+                save_dir / f"{celltype}_chordplot_legend_{env_str}.png"
+            ),
         )
         fig = plt.gcf()
         fig.set_size_inches(12, 10)
         fig.savefig(str(save_dir / f"{celltype}_chordplot_{env_str}.png"), dpi=150)
         plt.close(fig)
-        logger.info(f"Chord Diagram saved to {save_dir / f'{celltype}_chordplot_{env_str}.png'}")
+        logger.info(
+            f"Chord Diagram saved to {save_dir / f'{celltype}_chordplot_{env_str}.png'}"
+        )
     except Exception as e:
         logger.error(f"Failed to generate Chord plot for {celltype}: {e}")
 
