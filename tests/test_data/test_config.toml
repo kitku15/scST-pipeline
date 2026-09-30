@@ -1,0 +1,15 @@
+log_level = "INFO"
+seed = 42
+
+[project]
+analysis_name = "pytest_dummy"
+data_type = "CosMx"
+batch_key = "slide_id"
+sample_key = "sample_id"
+
+[io]
+base_raw_dir = "dummy_raw"
+base_zarr_dir = "dummy_zarrs"
+
+[pipeline]
+modules = ["0_format"]

@@ -1,9 +1,8 @@
 data
 *.zarr/
-Modules/__pycache__/
+__pycache__/
 analysis_*
 .kupavenv/
-tests/__pycache__/
 copy_files.sh
 run_pipeline.sh
 Xenium_SelectedCells.csv
