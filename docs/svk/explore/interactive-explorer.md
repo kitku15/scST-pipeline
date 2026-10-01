@@ -18,6 +18,7 @@ The Interactive Explorer is the primary dashboard for exploring your spatial dat
 * Use the Color By dropdown in the top control bar to color cells by Clusters, Annotations, or custom Metadata.
 * Allows cells to be colored by a continuous heatmap of that gene's expression across the tissue and UMAP.
 * Use the lasso tool in either the spatial plot or the embedding view to draw a boundary around a group of cells.
+* Click the camera icons at the top right to download PNGs of the UMAP or Spatial tissue maps with custom background colors and legends.
 
 ## Label Composition Pie Chart {#hide-me}
 Located in the bottom-right corner, the composition pie chart provides a breakdown of the currently active annotation/cluster.

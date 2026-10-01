@@ -18,6 +18,7 @@ The center of this module is a chord diagram representing directed interactions:
 
 *   The base of a connecting ribbon represents the **Sender** (the cell expressing the Ligand), pointing toward the **Receiver** (the cell expressing the Receptor).
 *   The width of the ribbon correlates with the strength/significance of the interaction.
+*   Click the 'Export' button to download a high-resolution PNG of the chord plot with a legend for the participating cell types or interactions.
 
 ## Filtering Options {#hide-me}
 

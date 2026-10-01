@@ -91,6 +91,7 @@ nav:
         - Cell Type Annotation: svk/explore/cell-type-annotation.md
         - Composition Analysis: svk/explore/composition-analysis.md
         - Multiplex Overlay: svk/explore/multiplex-overlay.md
+        - Data Export: svk/explore/data-export.md
       - Analysis Outputs (Full Mode):
         - Quality Control: svk/analysis/quality-control.md
         - Spatial Statistics: svk/analysis/spatial-statistics.md

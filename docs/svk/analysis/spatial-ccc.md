@@ -12,7 +12,8 @@ The **Spatial CCC** tab visualizes Cell-Cell Communication occurring at the sing
   <small><em>Click on the image to try the live demo!</em></small>
 </div>
 
-Use the **Spatial Interaction Target** searchable dropdown to select a specific interaction footprint to map onto the tissue.
+Use the **Spatial Interaction Target** searchable dropdown to select a specific interaction footprint to map onto the tissue. Click the camera icons to download high-resolution PNGs of the interaction score, ligand expression, or receptor expression maps. A continuous color gradient legend is automatically appended.
+
 
 *   **`LR_` Prefixes:** Specific Ligand-Receptor pairs.
 *   **`CCC_` Prefixes:** NMF Communication Factors/Signatures.
